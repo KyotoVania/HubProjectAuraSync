@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create:*)",
+      "Bash(mkdir:*)",
+      "Bash(xcopy:*)",
+      "Bash(rmdir:*)",
+      "Bash(robocopy:*)",
+      "Bash(move temp_project* .)",
+      "Bash(cp:*)",
+      "Bash(rm:*)",
+      "Bash(npm install)",
+      "Bash(npm install:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm run build:*)",
+      "Bash(curl:*)",
+      "Bash(git add:*)",
+      "Bash(git reset:*)"
+    ],
+    "deny": []
+  }
+}
