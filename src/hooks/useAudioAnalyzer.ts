@@ -18,22 +18,33 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
   const analyserRef = useRef<AnalyserNode | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const animationRef = useRef<number>(0)
+  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null)
   
   useEffect(() => {
     if (!audioSource) return
     
-    // Initialize Web Audio API
-    audioContextRef.current = new AudioContext()
-    analyserRef.current = audioContextRef.current.createAnalyser()
+    try {
+      // Initialize Web Audio API
+      audioContextRef.current = new AudioContext()
+      analyserRef.current = audioContextRef.current.createAnalyser()
+    } catch (error) {
+      console.error('Failed to initialize AudioContext:', error)
+      return
+    }
     
     // Configure analyser
     analyserRef.current.fftSize = 256
     const bufferLength = analyserRef.current.frequencyBinCount
     
     // Connect audio source
-    const source = audioContextRef.current.createMediaElementSource(audioSource)
-    source.connect(analyserRef.current)
-    analyserRef.current.connect(audioContextRef.current.destination)
+    try {
+      sourceNodeRef.current = audioContextRef.current.createMediaElementSource(audioSource)
+      sourceNodeRef.current.connect(analyserRef.current)
+      analyserRef.current.connect(audioContextRef.current.destination)
+    } catch (error) {
+      console.error('Failed to connect audio source:', error)
+      return
+    }
     
     // Data arrays
     const frequencies = new Uint8Array(bufferLength)
@@ -68,7 +79,13 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current)
       }
-      if (audioContextRef.current) {
+      if (sourceNodeRef.current) {
+        sourceNodeRef.current.disconnect()
+      }
+      if (analyserRef.current) {
+        analyserRef.current.disconnect()
+      }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
         audioContextRef.current.close()
       }
     }

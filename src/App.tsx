@@ -1,6 +1,6 @@
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Stats } from '@react-three/drei'
-import { Suspense, useRef } from 'react'
+import { Suspense, useRef, useEffect } from 'react'
 import { useAudioAnalyzer } from './hooks/useAudioAnalyzer'
 import { useAuraStore } from './store/auraStore'
 import { PulsarGrid } from './scenes/PulsarGrid'
@@ -9,14 +9,31 @@ function App() {
   const audioRef = useRef<HTMLAudioElement>(null)
   const audioData = useAudioAnalyzer(audioRef.current || undefined)
   const { setAudioFile } = useAuraStore()
+  const currentUrlRef = useRef<string | null>(null)
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file && audioRef.current) {
+      // Clean up previous URL
+      if (currentUrlRef.current) {
+        URL.revokeObjectURL(currentUrlRef.current)
+      }
+      
       setAudioFile(file)
-      audioRef.current.src = URL.createObjectURL(file)
+      const url = URL.createObjectURL(file)
+      currentUrlRef.current = url
+      audioRef.current.src = url
     }
   }
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (currentUrlRef.current) {
+        URL.revokeObjectURL(currentUrlRef.current)
+      }
+    }
+  }, [])
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', background: '#000' }}>

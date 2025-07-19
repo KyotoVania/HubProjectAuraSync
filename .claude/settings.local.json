@@ -15,7 +15,8 @@
       "Bash(npm run build:*)",
       "Bash(curl:*)",
       "Bash(git add:*)",
-      "Bash(git reset:*)"
+      "Bash(git reset:*)",
+      "Bash(git commit:*)"
     ],
     "deny": []
   }

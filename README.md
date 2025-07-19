@@ -1,69 +1,69 @@
-# React + TypeScript + Vite
+# AuraSync - Visualiseur Musical 3D Audio-Réactif
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Projet de 4ème année Epitech - Visualiseur musical 3D interactif qui réagit en temps réel à une source audio.
 
-Currently, two official plugins are available:
+## 🎯 Objectif
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Créer une application web 3D riche et interactive qui transforme l'audio en visualisations immersives en temps réel (fichier local ou microphone).
 
-## Expanding the ESLint configuration
+## 🛠️ Stack Technologique
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- **Langage**: TypeScript
+- **Framework**: React avec Vite
+- **Moteur 3D**: React Three Fiber (R3F)
+- **Helpers 3D**: @react-three/drei  
+- **Analyse Audio**: Web Audio API (AnalyserNode)
+- **Shaders**: GLSL (OpenGL Shading Language)
+- **Interface**: Leva pour le panneau de contrôle
+- **État**: Zustand pour la gestion d'état global
 
-```js
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## 🏗️ Architecture
 
-      // Remove tseslint.configs.recommended and replace with this
-      ...tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      ...tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      ...tseslint.configs.stylisticTypeChecked,
+- **Paradigme déclaratif**: Scène 3D (JSX) fonction de l'état React
+- **Structure modulaire**: Organisation claire en répertoires
+  - `src/components` - Composants réutilisables
+  - `src/hooks` - Hooks personnalisés (notamment `useAudioAnalyzer`)
+  - `src/scenes` - Scènes "Auras" 3D
+  - `src/glsl` - Shaders personnalisés
+- **Flux unidirectionnel**: Données audio → État React → Rendu 3D
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## 🚀 Installation et Démarrage
+
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+L'application sera disponible sur `http://localhost:5173`
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## 📊 État Actuel (Jour 2)
 
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+✅ **Jour 1 - Fondations**
+- Configuration Vite + React + TypeScript
+- Intégration React Three Fiber + Drei
+- Scène de base avec contrôles orbitaux
+- Premier visuel "PulsarGrid" audio-réactif
+- Interface utilisateur basique
+
+✅ **Jour 2 - Module Audio Robuste**
+- Hook `useAudioAnalyzer` avec gestion d'erreurs
+- Upload de fichier avec `URL.createObjectURL`
+- AudioContext et AnalyserNode configurés
+- Cleanup mémoire approprié
+- Connexion audio source sécurisée
+
+## 🎵 Fonctionnalités Actuelles
+
+- **Chargement de fichiers audio** via interface utilisateur
+- **Analyse audio temps réel** avec Web Audio API
+- **Visualisation 3D réactive** avec grille de cubes pulsants
+- **Contrôles 3D** pour navigation dans la scène
+- **Métriques audio** affichage du volume en temps réel
+
+## 🔧 Développement
+
+Le projet utilise une approche modulaire avec des hooks React personnalisés pour l'analyse audio et Zustand pour la gestion d'état globale. La scène 3D est déclarative et réactive aux changements d'état audio.
+
+---
+
+*Projet AuraSync - Epitech 4ème année - 104h / 4 ECTS*
