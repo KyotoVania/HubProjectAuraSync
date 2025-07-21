@@ -1,10 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 
+export interface FrequencyBands {
+  bass: number      // 20-250 Hz
+  mid: number       // 250-4000 Hz  
+  treble: number    // 4000-20000 Hz
+}
+
 export interface AudioData {
   frequencies: Uint8Array
   waveform: Uint8Array
   volume: number
   beat: boolean
+  bands: FrequencyBands
+  smoothedVolume: number
+  energy: number
 }
 
 export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
@@ -12,13 +21,74 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     frequencies: new Uint8Array(128),
     waveform: new Uint8Array(128),
     volume: 0,
-    beat: false
+    beat: false,
+    bands: { bass: 0, mid: 0, treble: 0 },
+    smoothedVolume: 0,
+    energy: 0
   })
   
   const analyserRef = useRef<AnalyserNode | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const animationRef = useRef<number>(0)
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null)
+  const smoothedVolumeRef = useRef<number>(0)
+  const volumeHistoryRef = useRef<number[]>([])
+  const beatThresholdRef = useRef<number>(0)
+  
+  // Helper functions for audio analysis
+  const calculateBands = (frequencies: Uint8Array, sampleRate: number): FrequencyBands => {
+    const nyquist = sampleRate / 2
+    const binSize = nyquist / frequencies.length
+    
+    // Calculate frequency ranges in bins
+    const bassEnd = Math.floor(250 / binSize)
+    const midEnd = Math.floor(4000 / binSize)
+    
+    let bass = 0, mid = 0, treble = 0
+    let bassCount = 0, midCount = 0, trebleCount = 0
+    
+    for (let i = 0; i < frequencies.length; i++) {
+      const freq = frequencies[i] / 255
+      
+      if (i <= bassEnd) {
+        bass += freq
+        bassCount++
+      } else if (i <= midEnd) {
+        mid += freq
+        midCount++
+      } else {
+        treble += freq
+        trebleCount++
+      }
+    }
+    
+    return {
+      bass: bassCount > 0 ? bass / bassCount : 0,
+      mid: midCount > 0 ? mid / midCount : 0,
+      treble: trebleCount > 0 ? treble / trebleCount : 0
+    }
+  }
+  
+  const updateSmoothedVolume = (currentVolume: number, smoothingFactor = 0.8): number => {
+    smoothedVolumeRef.current = smoothedVolumeRef.current * smoothingFactor + currentVolume * (1 - smoothingFactor)
+    return smoothedVolumeRef.current
+  }
+  
+  const detectBeat = (volume: number, smoothedVolume: number): boolean => {
+    // Keep volume history for adaptive threshold
+    volumeHistoryRef.current.push(volume)
+    if (volumeHistoryRef.current.length > 60) { // Keep last 1 second at 60fps
+      volumeHistoryRef.current.shift()
+    }
+    
+    // Calculate dynamic threshold
+    const avgVolume = volumeHistoryRef.current.reduce((sum, v) => sum + v, 0) / volumeHistoryRef.current.length
+    const variance = volumeHistoryRef.current.reduce((sum, v) => sum + Math.pow(v - avgVolume, 2), 0) / volumeHistoryRef.current.length
+    const dynamicThreshold = avgVolume + Math.sqrt(variance) * 1.5
+    
+    beatThresholdRef.current = dynamicThreshold
+    return volume > dynamicThreshold && volume > smoothedVolume * 1.3
+  }
   
   useEffect(() => {
     if (!audioSource) return
@@ -52,7 +122,7 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     
     // Analysis loop
     const analyze = () => {
-      if (!analyserRef.current) return
+      if (!analyserRef.current || !audioContextRef.current) return
       
       analyserRef.current.getByteFrequencyData(frequencies)
       analyserRef.current.getByteTimeDomainData(waveform)
@@ -60,14 +130,26 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
       // Calculate volume
       const volume = frequencies.reduce((sum, freq) => sum + freq, 0) / frequencies.length / 255
       
-      // Simple beat detection
-      const beat = volume > 0.7
+      // Calculate frequency bands
+      const bands = calculateBands(frequencies, audioContextRef.current.sampleRate)
+      
+      // Update smoothed volume
+      const smoothedVolume = updateSmoothedVolume(volume)
+      
+      // Advanced beat detection
+      const beat = detectBeat(volume, smoothedVolume)
+      
+      // Calculate energy (sum of all frequencies)
+      const energy = frequencies.reduce((sum, freq) => sum + (freq / 255) ** 2, 0) / frequencies.length
       
       setAudioData({
         frequencies: frequencies.slice(),
         waveform: waveform.slice(),
         volume,
-        beat
+        beat,
+        bands,
+        smoothedVolume,
+        energy
       })
       
       animationRef.current = requestAnimationFrame(analyze)

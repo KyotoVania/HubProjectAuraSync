@@ -83,7 +83,17 @@ function App() {
           style={{ width: '200px' }}
         />
         <div style={{ marginTop: '10px', fontSize: '12px' }}>
-          Volume: {Math.round(audioData.volume * 100)}%
+          <div>Volume: {Math.round(audioData.volume * 100)}%</div>
+          <div>Smoothed: {Math.round(audioData.smoothedVolume * 100)}%</div>
+          <div>Energy: {Math.round(audioData.energy * 100)}%</div>
+          <div style={{ color: audioData.beat ? '#00ff00' : '#666' }}>
+            Beat: {audioData.beat ? '●' : '○'}
+          </div>
+          <div style={{ marginTop: '5px' }}>
+            <div>Bass: {Math.round(audioData.bands.bass * 100)}%</div>
+            <div>Mid: {Math.round(audioData.bands.mid * 100)}%</div>
+            <div>Treble: {Math.round(audioData.bands.treble * 100)}%</div>
+          </div>
         </div>
       </div>
     </div>

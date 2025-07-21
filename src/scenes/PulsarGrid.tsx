@@ -17,22 +17,62 @@ export function PulsarGrid({ audioData }: PulsarGridProps) {
   useFrame((state) => {
     if (!groupRef.current) return
     
-    // Rotate the entire grid
-    groupRef.current.rotation.y = state.clock.elapsedTime * 0.1
+    // Rotate the entire grid with beat influence
+    const rotationSpeed = 0.1 + audioData.energy * 0.2
+    groupRef.current.rotation.y = state.clock.elapsedTime * rotationSpeed
     
-    // Animate each cube based on frequency data
+    // Beat pulse effect on the entire grid
+    if (audioData.beat) {
+      groupRef.current.scale.setScalar(1 + audioData.energy * 0.3)
+    } else {
+      groupRef.current.scale.lerp(new THREE.Vector3(1, 1, 1), 0.1)
+    }
+    
+    // Animate each cube based on frequency data and bands
     meshRefs.current.forEach((mesh, index) => {
       if (!mesh) return
       
-      const frequencyIndex = Math.floor((index / (gridSize * gridSize)) * audioData.frequencies.length)
+      const totalCubes = gridSize * gridSize
+      const frequencyIndex = Math.floor((index / totalCubes) * audioData.frequencies.length)
       const frequency = audioData.frequencies[frequencyIndex] || 0
-      const scale = 1 + (frequency / 255) * 2
       
-      mesh.scale.setScalar(scale)
+      // Use different bands for different sections of the grid
+      const x = Math.floor(index / gridSize)
+      const z = index % gridSize
+      let bandValue = 0
+      let hue = 0
       
-      // Color based on frequency
+      if (x < gridSize / 3) {
+        // Bass section (red-orange)
+        bandValue = audioData.bands.bass
+        hue = 0.05 + bandValue * 0.1
+      } else if (x < (2 * gridSize) / 3) {
+        // Mid section (green-yellow)
+        bandValue = audioData.bands.mid  
+        hue = 0.3 + bandValue * 0.2
+      } else {
+        // Treble section (blue-purple)
+        bandValue = audioData.bands.treble
+        hue = 0.7 + bandValue * 0.2
+      }
+      
+      // Scale based on both frequency and band
+      const baseScale = 1 + (frequency / 255) * 1.5
+      const bandScale = 1 + bandValue * 2
+      const finalScale = baseScale * bandScale
+      
+      mesh.scale.setScalar(finalScale)
+      
+      // Enhanced color mapping
       const material = mesh.material as THREE.MeshStandardMaterial
-      material.color.setHSL(frequency / 255 * 0.8, 0.8, 0.5)
+      const saturation = 0.8 + audioData.energy * 0.2
+      const lightness = 0.4 + audioData.smoothedVolume * 0.4
+      
+      material.color.setHSL(hue, saturation, lightness)
+      
+      // Add some individual cube animation
+      mesh.rotation.x = state.clock.elapsedTime * (frequency / 255) * 2
+      mesh.rotation.z = state.clock.elapsedTime * bandValue
     })
   })
   
