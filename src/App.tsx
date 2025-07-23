@@ -2,7 +2,6 @@ import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Stats } from '@react-three/drei'
 import { Suspense, useRef, useEffect } from 'react'
 import { useAudioAnalyzer } from './hooks/useAudioAnalyzer'
-import { useAuraStore } from './store/auraStore'
 import { useConfigStore } from './store/configStore'
 import { VisualizationRenderer } from './scenes/VisualizationRenderer'
 import { ConfigPanel } from './components/ConfigPanel'
@@ -10,7 +9,6 @@ import { ConfigPanel } from './components/ConfigPanel'
 function App() {
   const audioRef = useRef<HTMLAudioElement>(null)
   const audioData = useAudioAnalyzer(audioRef.current || undefined)
-  const { setAudioFile } = useAuraStore()
   const { currentConfig } = useConfigStore()
   const currentUrlRef = useRef<string | null>(null)
   
@@ -23,7 +21,6 @@ function App() {
         URL.revokeObjectURL(currentUrlRef.current)
       }
       
-      setAudioFile(file)
       const url = URL.createObjectURL(file)
       currentUrlRef.current = url
       audioRef.current.src = url

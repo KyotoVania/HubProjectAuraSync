@@ -8,7 +8,8 @@ export type ShapeType = "cube" | "sphere" | "icosahedron" | "custom"
 export type GridLayout = "plane" | "cylinder" | "spiral" | "helix"
 export type ConstellationFormation = "random" | "sphere" | "spiral" | "dnahelix" | "cube" | "torus"
 export type ConnectionType = "proximity" | "frequency" | "beat-sync" | "formation-based"
-export type VisualizationMode = "bars2d" | "sphere2d" | "sphere3d" | "tunnel3d" | "wave" | "grid2d" | "constellation"
+export type FormationMode = "rigid" | "fluid"
+export type VisualizationMode = "bars2d" | "sphere2d" | "sphere3d" | "tunnel3d" | "wave" | "grid2d" | "constellation" | "metaball" | "crystalline" | "quantum-tunnel"
 
 // 1. Global Settings
 export interface GlobalSettings {
@@ -87,6 +88,7 @@ export interface Sphere3DSettings {
 export interface ConstellationSettings {
   particleCount: number
   formation: ConstellationFormation
+  formationMode: FormationMode
   connectionType: ConnectionType
   connectionDistance: number
   connectionOpacity: number
@@ -94,6 +96,7 @@ export interface ConstellationSettings {
   particleAudioLink: AudioLink
   formationSpeed: number
   explosionIntensity: number
+  fluidDeformation: number
   trailLength: number
   colorMode: ColorMode
   baseColor: string
@@ -175,20 +178,22 @@ export const DEFAULT_WAVE_SETTINGS: WaveSettings = {
 }
 
 export const DEFAULT_CONSTELLATION_SETTINGS: ConstellationSettings = {
-  particleCount: 800,
+  particleCount: 200,
   formation: "sphere",
-  connectionType: "proximity",
-  connectionDistance: 3.0,
-  connectionOpacity: 0.4,
-  particleSize: 0.8,
+  formationMode: "rigid",
+  connectionType: "formation-based",
+  connectionDistance: 4.0,
+  connectionOpacity: 0.3,
+  particleSize: 0.15,
   particleAudioLink: "volume",
   formationSpeed: 0.5,
-  explosionIntensity: 1.5,
+  explosionIntensity: 0.3,
+  fluidDeformation: 0.2,
   trailLength: 20,
   colorMode: "audio-reactive",
   baseColor: "#ffffff",
-  formationScale: 8.0,
-  rotationSpeed: [0.02, 0.01, 0.015]
+  formationScale: 6.0,
+  rotationSpeed: [0.01, 0.005, 0.008]
 }
 
 export const DEFAULT_SCENE_CONFIG: SceneConfig = {

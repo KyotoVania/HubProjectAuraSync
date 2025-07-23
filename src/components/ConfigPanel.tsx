@@ -8,6 +8,7 @@ export function ConfigPanel() {
     updateGlobalSettings, 
     updateVisualizationMode,
     updateBars2DSettings,
+    updateConstellationSettings,
     showConfigPanel, 
     toggleConfigPanel,
     activeConfigTab,
@@ -265,6 +266,85 @@ export function ConfigPanel() {
             </div>
           )}
           
+          {/* Constellation Settings */}
+          {currentConfig.visualization.mode === 'constellation' && currentConfig.visualization.constellation && (
+            <div>
+              <h4 style={{ margin: '0 0 10px 0', color: '#aaa', fontSize: '14px' }}>Constellation Settings</h4>
+              
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ display: 'block', marginBottom: '4px' }}>Particle Count:</label>
+                <input
+                  type="range"
+                  min="100"
+                  max="1000"
+                  step="50"
+                  value={currentConfig.visualization.constellation.particleCount}
+                  onChange={(e) => updateConstellationSettings({ particleCount: parseInt(e.target.value) })}
+                  style={inputStyle}
+                />
+                <span style={{ fontSize: '11px', color: '#aaa' }}>{currentConfig.visualization.constellation.particleCount}</span>
+              </div>
+              
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ display: 'block', marginBottom: '4px' }}>Formation Mode:</label>
+                <select
+                  value={currentConfig.visualization.constellation.formationMode}
+                  onChange={(e) => updateConstellationSettings({ formationMode: e.target.value as any })}
+                  style={selectStyle}
+                >
+                  <option value="rigid">Rigid (Stable Shape)</option>
+                  <option value="fluid">Fluid (Audio Deformation)</option>
+                </select>
+              </div>
+              
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ display: 'block', marginBottom: '4px' }}>Formation:</label>
+                <select
+                  value={currentConfig.visualization.constellation.formation}
+                  onChange={(e) => updateConstellationSettings({ formation: e.target.value as any })}
+                  style={selectStyle}
+                >
+                  <option value="sphere">Sphere</option>
+                  <option value="spiral">Spiral</option>
+                  <option value="dnahelix">DNA Helix</option>
+                  <option value="cube">Cube</option>
+                  <option value="torus">Torus</option>
+                  <option value="random">Random</option>
+                </select>
+              </div>
+              
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ display: 'block', marginBottom: '4px' }}>Connection Distance:</label>
+                <input
+                  type="range"
+                  min="1"
+                  max="8"
+                  step="0.5"
+                  value={currentConfig.visualization.constellation.connectionDistance}
+                  onChange={(e) => updateConstellationSettings({ connectionDistance: parseFloat(e.target.value) })}
+                  style={inputStyle}
+                />
+                <span style={{ fontSize: '11px', color: '#aaa' }}>{currentConfig.visualization.constellation.connectionDistance.toFixed(1)}</span>
+              </div>
+              
+              {currentConfig.visualization.constellation.formationMode === 'fluid' && (
+                <div style={{ marginBottom: '15px' }}>
+                  <label style={{ display: 'block', marginBottom: '4px' }}>Fluid Deformation:</label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    value={currentConfig.visualization.constellation.fluidDeformation}
+                    onChange={(e) => updateConstellationSettings({ fluidDeformation: parseFloat(e.target.value) })}
+                    style={inputStyle}
+                  />
+                  <span style={{ fontSize: '11px', color: '#aaa' }}>{currentConfig.visualization.constellation.fluidDeformation.toFixed(1)}</span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Grid2D Settings (Legacy) */}
           {currentConfig.visualization.mode === 'grid2d' && currentConfig.visualization.grid2d && (
             <div>

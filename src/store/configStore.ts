@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { SceneConfig, GlobalSettings, GridSettings, ReactivityCurve, AudioLink, Bars2DSettings, VisualizationMode } from '../types/config'
+import type { SceneConfig, GlobalSettings, GridSettings, ReactivityCurve, AudioLink, Bars2DSettings, VisualizationMode, ConstellationSettings } from '../types/config'
 import { DEFAULT_SCENE_CONFIG } from '../types/config'
 
 interface ConfigState {
@@ -11,6 +11,7 @@ interface ConfigState {
   updateVisualizationMode: (mode: VisualizationMode) => void
   updateBars2DSettings: (settings: Partial<Bars2DSettings>) => void
   updateGridSettings: (settings: Partial<GridSettings>) => void
+  updateConstellationSettings: (settings: Partial<ConstellationSettings>) => void
   loadPreset: (config: SceneConfig) => void
   resetToDefault: () => void
   
@@ -61,6 +62,16 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       visualization: {
         ...state.currentConfig.visualization,
         grid2d: { ...state.currentConfig.visualization.grid2d!, ...settings }
+      }
+    }
+  })),
+  
+  updateConstellationSettings: (settings) => set((state) => ({
+    currentConfig: {
+      ...state.currentConfig,
+      visualization: {
+        ...state.currentConfig.visualization,
+        constellation: { ...state.currentConfig.visualization.constellation!, ...settings }
       }
     }
   })),
