@@ -2,6 +2,7 @@ import type { AudioData } from '../hooks/useAudioAnalyzer'
 import type { SceneConfig } from '../types/config'
 import { Bars2D } from './Bars2D'
 import { PulsarGrid } from './PulsarGrid'
+import { ConstellationVivante } from './ConstellationVivante'
 
 interface VisualizationRendererProps {
   audioData: AudioData
@@ -19,6 +20,10 @@ export function VisualizationRenderer({ audioData, config }: VisualizationRender
     case 'grid2d':
       if (!visualization.grid2d) return null
       return <PulsarGrid audioData={audioData} config={visualization.grid2d} globalConfig={global} />
+      
+    case 'constellation':
+      if (!visualization.constellation) return null
+      return <ConstellationVivante audioData={audioData} config={visualization.constellation} globalConfig={global} />
       
     case 'sphere2d':
     case 'wave':

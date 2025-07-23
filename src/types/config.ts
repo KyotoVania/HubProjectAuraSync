@@ -6,7 +6,9 @@ export type ColorMode = "static" | "gradient" | "audio-reactive"
 export type CameraMode = "orbit" | "follow" | "static"
 export type ShapeType = "cube" | "sphere" | "icosahedron" | "custom"
 export type GridLayout = "plane" | "cylinder" | "spiral" | "helix"
-export type VisualizationMode = "bars2d" | "sphere2d" | "sphere3d" | "tunnel3d" | "wave" | "grid2d"
+export type ConstellationFormation = "random" | "sphere" | "spiral" | "dnahelix" | "cube" | "torus"
+export type ConnectionType = "proximity" | "frequency" | "beat-sync" | "formation-based"
+export type VisualizationMode = "bars2d" | "sphere2d" | "sphere3d" | "tunnel3d" | "wave" | "grid2d" | "constellation"
 
 // 1. Global Settings
 export interface GlobalSettings {
@@ -82,6 +84,23 @@ export interface Sphere3DSettings {
   deformationStrength: number
 }
 
+export interface ConstellationSettings {
+  particleCount: number
+  formation: ConstellationFormation
+  connectionType: ConnectionType
+  connectionDistance: number
+  connectionOpacity: number
+  particleSize: number
+  particleAudioLink: AudioLink
+  formationSpeed: number
+  explosionIntensity: number
+  trailLength: number
+  colorMode: ColorMode
+  baseColor: string
+  formationScale: number
+  rotationSpeed: [number, number, number]
+}
+
 // Main Scene Configuration
 export interface SceneConfig {
   id: string
@@ -94,6 +113,7 @@ export interface SceneConfig {
     tunnel3d?: Tunnel3DSettings
     sphere3d?: Sphere3DSettings
     grid2d?: GridSettings // Legacy grid
+    constellation?: ConstellationSettings
   }
 }
 
@@ -154,6 +174,23 @@ export const DEFAULT_WAVE_SETTINGS: WaveSettings = {
   dampening: 0.9
 }
 
+export const DEFAULT_CONSTELLATION_SETTINGS: ConstellationSettings = {
+  particleCount: 800,
+  formation: "sphere",
+  connectionType: "proximity",
+  connectionDistance: 3.0,
+  connectionOpacity: 0.4,
+  particleSize: 0.8,
+  particleAudioLink: "volume",
+  formationSpeed: 0.5,
+  explosionIntensity: 1.5,
+  trailLength: 20,
+  colorMode: "audio-reactive",
+  baseColor: "#ffffff",
+  formationScale: 8.0,
+  rotationSpeed: [0.02, 0.01, 0.015]
+}
+
 export const DEFAULT_SCENE_CONFIG: SceneConfig = {
   id: "default",
   global: DEFAULT_GLOBAL_SETTINGS,
@@ -162,6 +199,7 @@ export const DEFAULT_SCENE_CONFIG: SceneConfig = {
     bars2d: DEFAULT_BARS2D_SETTINGS,
     sphere2d: DEFAULT_SPHERE2D_SETTINGS,
     wave: DEFAULT_WAVE_SETTINGS,
-    grid2d: DEFAULT_GRID_SETTINGS
+    grid2d: DEFAULT_GRID_SETTINGS,
+    constellation: DEFAULT_CONSTELLATION_SETTINGS
   }
 }

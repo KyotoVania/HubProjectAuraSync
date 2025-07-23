@@ -195,6 +195,7 @@ export function ConfigPanel() {
             >
               <option value="bars2d">Bars 2D (Equalizer)</option>
               <option value="grid2d">Grid 2D (Legacy)</option>
+              <option value="constellation">Constellation Vivante ✨</option>
               <option value="sphere2d">Sphere 2D (Coming Soon)</option>
               <option value="wave">Wave (Coming Soon)</option>
               <option value="tunnel3d">Tunnel 3D (Coming Soon)</option>
