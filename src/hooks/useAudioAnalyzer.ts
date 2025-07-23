@@ -14,17 +14,24 @@ export interface AudioData {
   bands: FrequencyBands
   smoothedVolume: number
   energy: number
+  // Legacy compatibility for old scenes
+  bass: number
+  mids: number  
+  treble: number
 }
 
 export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
   const [audioData, setAudioData] = useState<AudioData>({
-    frequencies: new Uint8Array(128),
-    waveform: new Uint8Array(128),
+    frequencies: new Uint8Array(512), // Updated for new FFT size
+    waveform: new Uint8Array(512),
     volume: 0,
     beat: false,
     bands: { bass: 0, mid: 0, treble: 0 },
     smoothedVolume: 0,
-    energy: 0
+    energy: 0,
+    bass: 0,
+    mids: 0,
+    treble: 0
   })
   
   const analyserRef = useRef<AnalyserNode | null>(null)
@@ -40,23 +47,24 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     const nyquist = sampleRate / 2
     const binSize = nyquist / frequencies.length
     
-    // Calculate frequency ranges in bins
+    // Calculate frequency ranges in bins - start from bin 1 to skip DC component
+    const bassStart = Math.max(1, Math.floor(20 / binSize))  // Start from 20Hz
     const bassEnd = Math.floor(250 / binSize)
     const midEnd = Math.floor(4000 / binSize)
     
     let bass = 0, mid = 0, treble = 0
     let bassCount = 0, midCount = 0, trebleCount = 0
     
-    for (let i = 0; i < frequencies.length; i++) {
+    for (let i = 1; i < frequencies.length; i++) { // Skip DC component at index 0
       const freq = frequencies[i] / 255
       
-      if (i <= bassEnd) {
+      if (i >= bassStart && i <= bassEnd) {
         bass += freq
         bassCount++
-      } else if (i <= midEnd) {
+      } else if (i > bassEnd && i <= midEnd) {
         mid += freq
         midCount++
-      } else {
+      } else if (i > midEnd) {
         treble += freq
         trebleCount++
       }
@@ -102,8 +110,9 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
       return
     }
     
-    // Configure analyser
-    analyserRef.current.fftSize = 256
+    // Configure analyser - higher resolution for better frequency separation
+    analyserRef.current.fftSize = 1024 // Increased from 256 to 1024
+    analyserRef.current.smoothingTimeConstant = 0.3 // Reduce smoothing for more reactive analysis
     const bufferLength = analyserRef.current.frequencyBinCount
     
     // Connect audio source
@@ -149,7 +158,11 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
         beat,
         bands,
         smoothedVolume,
-        energy
+        energy,
+        // Legacy compatibility
+        bass: bands.bass,
+        mids: bands.mid,
+        treble: bands.treble
       })
       
       animationRef.current = requestAnimationFrame(analyze)

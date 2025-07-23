@@ -2,9 +2,7 @@ import type { AudioData } from '../hooks/useAudioAnalyzer'
 import type { SceneConfig } from '../types/config'
 import { Bars2D } from './Bars2D'
 import { ConstellationVivante } from './ConstellationVivante'
-import { MetaballField } from './MetaballField'
-import { CrystallineFormation } from './CrystallineFormation'
-import { QuantumTunnel } from './QuantumTunnel'
+import { TunnelSDF } from './TunnelSDF'
 
 interface VisualizationRendererProps {
   audioData: AudioData
@@ -23,14 +21,8 @@ export function VisualizationRenderer({ audioData, config }: VisualizationRender
       if (!visualization.constellation) return null
       return <ConstellationVivante audioData={audioData} config={visualization.constellation} globalConfig={global} />
       
-    case 'metaball':
-      return <MetaballField audioData={audioData} globalConfig={global} />
-      
-    case 'crystalline':
-      return <CrystallineFormation audioData={audioData} globalConfig={global} />
-      
-    case 'quantum-tunnel':
-      return <QuantumTunnel audioData={audioData} globalConfig={global} />
+    case 'tunnelsdf':
+      return <TunnelSDF audioData={audioData} globalConfig={global} />
       
     case 'sphere2d':
     case 'wave':

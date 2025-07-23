@@ -99,9 +99,12 @@ function App() {
             Beat: {audioData.beat ? '●' : '○'}
           </div>
           <div style={{ marginTop: '5px' }}>
-            <div>Bass: {Math.round(audioData.bands.bass * 100)}%</div>
-            <div>Mid: {Math.round(audioData.bands.mid * 100)}%</div>
-            <div>Treble: {Math.round(audioData.bands.treble * 100)}%</div>
+            <div>Bass: {Math.round(audioData.bands.bass * 100)}% (Raw: {audioData.bands.bass.toFixed(3)})</div>
+            <div>Mid: {Math.round(audioData.bands.mid * 100)}% (Raw: {audioData.bands.mid.toFixed(3)})</div>
+            <div>Treble: {Math.round(audioData.bands.treble * 100)}% (Raw: {audioData.bands.treble.toFixed(3)})</div>
+            <div style={{ fontSize: '10px', color: '#888', marginTop: '5px' }}>
+              FFT Bins: {audioData.frequencies.length} | Sample Rate: {audioData.frequencies.length * 2 * 22.05} Hz approx
+            </div>
           </div>
         </div>
       </div>

@@ -87,47 +87,6 @@ export function ConstellationVivante({ audioData, config, globalConfig }: Conste
     return []
   }, [particles.length, config.connectionType, config.formation, config.particleCount])
   
-  // Dynamic connections for fluid mode (recalculated each frame)
-  const dynamicConnections = useRef<Connection[]>([])
-  
-  // Calculate dynamic connections in fluid mode
-  if (config.formationMode === 'fluid' && config.connectionType === 'proximity') {
-    const newConnections: Connection[] = []
-    const maxConnectionsPerParticle = 3
-    
-    for (let i = 0; i < particles.length; i++) {
-      const distances: { index: number, distance: number }[] = []
-      
-      for (let j = 0; j < particles.length; j++) {
-        if (i === j) continue
-        const distance = particles[i].position.distanceTo(particles[j].position)
-        if (distance < config.connectionDistance) {
-          distances.push({ index: j, distance })
-        }
-      }
-      
-      distances.sort((a, b) => a.distance - b.distance)
-      const connectionsToAdd = Math.min(maxConnectionsPerParticle, distances.length)
-      
-      for (let k = 0; k < connectionsToAdd; k++) {
-        const j = distances[k].index
-        if (i < j) {
-          newConnections.push({
-            from: i,
-            to: j,
-            strength: 1 - (distances[k].distance / config.connectionDistance)
-          })
-        }
-      }
-    }
-    
-    dynamicConnections.current = newConnections
-  }
-  
-  // Use dynamic connections in fluid mode, static in rigid mode
-  const activeConnections = config.formationMode === 'fluid' && config.connectionType === 'proximity' 
-    ? dynamicConnections.current 
-    : connections
   
   useFrame((state) => {
     if (!groupRef.current) return
@@ -145,7 +104,7 @@ export function ConstellationVivante({ audioData, config, globalConfig }: Conste
     const explosionScale = 1 + (audioData.beat ? curvedAudioValue * config.explosionIntensity : 0)
     groupRef.current.scale.lerp(new THREE.Vector3(explosionScale, explosionScale, explosionScale), 0.1)
     
-    // Update particles based on formation mode
+    // Update particles
     particles.forEach((particle, index) => {
       const mesh = particlesRef.current[index]
       if (!mesh) return
@@ -159,29 +118,10 @@ export function ConstellationVivante({ audioData, config, globalConfig }: Conste
         time * config.formationSpeed
       )
       
-      if (config.formationMode === 'rigid') {
-        // RIGID MODE: Maintain formation shape strictly
-        particle.targetPosition.copy(formationPos)
-        
-        // Only apply subtle pulsing on the entire formation scale (handled globally)
-        particle.position.lerp(particle.targetPosition, 0.1)
-        mesh.position.copy(particle.position)
-        
-      } else {
-        // FLUID MODE: Allow controlled deformation
-        const audioInfluence = curvedAudioValue * config.fluidDeformation
-        const noise = new THREE.Vector3(
-          Math.sin(time + index * 0.1) * audioInfluence,
-          Math.cos(time + index * 0.15) * audioInfluence,
-          Math.sin(time * 0.8 + index * 0.2) * audioInfluence
-        )
-        
-        particle.targetPosition.copy(formationPos).add(noise)
-        
-        // Smooth interpolation
-        particle.position.lerp(particle.targetPosition, 0.05)
-        mesh.position.copy(particle.position)
-      }
+      // Maintain formation shape with subtle audio influence
+      particle.targetPosition.copy(formationPos)
+      particle.position.lerp(particle.targetPosition, 0.1)
+      mesh.position.copy(particle.position)
       
       // Scale based on audio
       const particleScale = config.particleSize * (0.5 + curvedAudioValue * 0.5)
@@ -197,17 +137,11 @@ export function ConstellationVivante({ audioData, config, globalConfig }: Conste
       }
     })
     
-    // Update connections (use activeConnections which adapts to mode)
-    if (connectionLinesRef.current && activeConnections.length > 0) {
+    // Update connections
+    if (connectionLinesRef.current && connections.length > 0) {
       const positions = connectionLinesRef.current.attributes.position.array as Float32Array
       
-      // Resize array if needed for dynamic connections
-      if (positions.length < activeConnections.length * 6) {
-        const newPositions = new Float32Array(activeConnections.length * 6)
-        connectionLinesRef.current.setAttribute('position', new THREE.BufferAttribute(newPositions, 3))
-      }
-      
-      activeConnections.forEach((connection, index) => {
+      connections.forEach((connection, index) => {
         const fromParticle = particles[connection.from]
         const toParticle = particles[connection.to]
         
@@ -243,18 +177,17 @@ export function ConstellationVivante({ audioData, config, globalConfig }: Conste
     </mesh>
   ))
   
-  // Create connection lines geometry (adaptable to mode changes)
+  // Create connection lines geometry
   const connectionGeometry = useMemo(() => {
-    const maxConnections = config.formationMode === 'fluid' ? config.particleCount * 3 : connections.length
-    if (maxConnections === 0) return null
+    if (connections.length === 0) return null
     
     const geometry = new THREE.BufferGeometry()
-    const positions = new Float32Array(maxConnections * 6) // 2 points * 3 coordinates per connection
+    const positions = new Float32Array(connections.length * 6) // 2 points * 3 coordinates per connection
     
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
     
     return geometry
-  }, [connections.length, config.formationMode, config.particleCount])
+  }, [connections.length])
   
   return (
     <group ref={groupRef}>
@@ -351,8 +284,6 @@ function generateCubePosition(t: number, scale: number): THREE.Vector3 {
   const s = scale / 2;
   
   // Define the 12 edges of a cube more systematically
-  const totalPoints = 1000; // Number of points to distribute
-  const pointsPerEdge = totalPoints / 12;
   const currentEdge = Math.floor(t * 12);
   const edgeProgress = (t * 12) % 1;
   

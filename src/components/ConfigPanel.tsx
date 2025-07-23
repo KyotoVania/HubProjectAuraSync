@@ -197,6 +197,7 @@ export function ConfigPanel() {
               <option value="bars2d">Bars 2D (Equalizer)</option>
               <option value="grid2d">Grid 2D (Legacy)</option>
               <option value="constellation">Constellation Vivante ✨</option>
+              <option value="tunnelsdf">Tunnel SDF 🚀 (Demo-style)</option>
               <option value="sphere2d">Sphere 2D (Coming Soon)</option>
               <option value="wave">Wave (Coming Soon)</option>
               <option value="tunnel3d">Tunnel 3D (Coming Soon)</option>
@@ -285,17 +286,6 @@ export function ConfigPanel() {
                 <span style={{ fontSize: '11px', color: '#aaa' }}>{currentConfig.visualization.constellation.particleCount}</span>
               </div>
               
-              <div style={{ marginBottom: '15px' }}>
-                <label style={{ display: 'block', marginBottom: '4px' }}>Formation Mode:</label>
-                <select
-                  value={currentConfig.visualization.constellation.formationMode}
-                  onChange={(e) => updateConstellationSettings({ formationMode: e.target.value as any })}
-                  style={selectStyle}
-                >
-                  <option value="rigid">Rigid (Stable Shape)</option>
-                  <option value="fluid">Fluid (Audio Deformation)</option>
-                </select>
-              </div>
               
               <div style={{ marginBottom: '15px' }}>
                 <label style={{ display: 'block', marginBottom: '4px' }}>Formation:</label>
@@ -327,21 +317,6 @@ export function ConfigPanel() {
                 <span style={{ fontSize: '11px', color: '#aaa' }}>{currentConfig.visualization.constellation.connectionDistance.toFixed(1)}</span>
               </div>
               
-              {currentConfig.visualization.constellation.formationMode === 'fluid' && (
-                <div style={{ marginBottom: '15px' }}>
-                  <label style={{ display: 'block', marginBottom: '4px' }}>Fluid Deformation:</label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.1"
-                    value={currentConfig.visualization.constellation.fluidDeformation}
-                    onChange={(e) => updateConstellationSettings({ fluidDeformation: parseFloat(e.target.value) })}
-                    style={inputStyle}
-                  />
-                  <span style={{ fontSize: '11px', color: '#aaa' }}>{currentConfig.visualization.constellation.fluidDeformation.toFixed(1)}</span>
-                </div>
-              )}
             </div>
           )}
 
