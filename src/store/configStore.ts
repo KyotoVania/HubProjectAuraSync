@@ -80,11 +80,14 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
         volumeMultiplier: 1.5,
         reactivityCurve: 'exponential' as ReactivityCurve
       },
-      grid: {
-        ...DEFAULT_SCENE_CONFIG.grid,
-        scaleAudioLink: 'bass' as AudioLink,
-        scaleMultiplier: 3.0,
-        emissiveIntensity: 0.5
+      visualization: {
+        ...DEFAULT_SCENE_CONFIG.visualization,
+        grid2d: {
+          ...DEFAULT_SCENE_CONFIG.visualization.grid2d!,
+          scaleAudioLink: 'bass' as AudioLink,
+          scaleMultiplier: 3.0,
+          emissiveIntensity: 0.5
+        }
       }
     },
     'smooth-vibes': {
@@ -96,10 +99,13 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
         reactivityCurve: 'easeOutQuad' as ReactivityCurve,
         cameraOrbitSpeed: 0.02
       },
-      grid: {
-        ...DEFAULT_SCENE_CONFIG.grid,
-        scaleMultiplier: 1.5,
-        positionNoise: { strength: 0.1, speed: 0.5 }
+      visualization: {
+        ...DEFAULT_SCENE_CONFIG.visualization,
+        grid2d: {
+          ...DEFAULT_SCENE_CONFIG.visualization.grid2d!,
+          scaleMultiplier: 1.5,
+          positionNoise: { strength: 0.1, speed: 0.5 }
+        }
       }
     }
   },

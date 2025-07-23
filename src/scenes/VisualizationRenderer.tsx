@@ -1,4 +1,3 @@
-import React from 'react'
 import type { AudioData } from '../hooks/useAudioAnalyzer'
 import type { SceneConfig } from '../types/config'
 import { Bars2D } from './Bars2D'
@@ -22,40 +21,11 @@ export function VisualizationRenderer({ audioData, config }: VisualizationRender
       return <PulsarGrid audioData={audioData} config={visualization.grid2d} globalConfig={global} />
       
     case 'sphere2d':
-      // TODO: Implement Sphere2D - temporary placeholder
-      return (
-        <mesh>
-          <boxGeometry args={[1, 1, 1]} />
-          <meshBasicMaterial color="orange" />
-        </mesh>
-      )
-      
     case 'wave':
-      // TODO: Implement Wave - temporary placeholder
-      return (
-        <mesh>
-          <boxGeometry args={[1, 1, 1]} />
-          <meshBasicMaterial color="green" />
-        </mesh>
-      )
-      
     case 'tunnel3d':
-      // TODO: Implement Tunnel3D - temporary placeholder
-      return (
-        <mesh>
-          <boxGeometry args={[1, 1, 1]} />
-          <meshBasicMaterial color="purple" />
-        </mesh>
-      )
-      
     case 'sphere3d':
-      // TODO: Implement Sphere3D - temporary placeholder
-      return (
-        <mesh>
-          <boxGeometry args={[1, 1, 1]} />
-          <meshBasicMaterial color="red" />
-        </mesh>
-      )
+      // Modes not yet implemented - fallback to bars2d
+      return <Bars2D audioData={audioData} config={visualization.bars2d!} globalConfig={global} />
       
     default:
       return <Bars2D audioData={audioData} config={visualization.bars2d!} globalConfig={global} />

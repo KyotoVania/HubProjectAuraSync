@@ -1,5 +1,6 @@
 import * as ConfigTypes from '../types/config'
 import type {AudioData} from '../hooks/useAudioAnalyzer'
+import type {AudioLink, ReactivityCurve} from '../types/config'
 
 // Reactivity curve functions
 export function applyReactivityCurve(value: number, curve: ConfigTypes.ReactivityCurve): number {

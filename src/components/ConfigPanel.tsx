@@ -1,6 +1,6 @@
 import React from 'react'
 import { useConfigStore } from '../store/configStore'
-import type { ReactivityCurve, AudioLink, VisualizationMode } from '../types/config'
+import type { ReactivityCurve, VisualizationMode } from '../types/config'
 
 export function ConfigPanel() {
   const { 
@@ -8,7 +8,6 @@ export function ConfigPanel() {
     updateGlobalSettings, 
     updateVisualizationMode,
     updateBars2DSettings,
-    updateGridSettings,
     showConfigPanel, 
     toggleConfigPanel,
     activeConfigTab,

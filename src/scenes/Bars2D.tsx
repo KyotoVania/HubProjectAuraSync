@@ -3,7 +3,6 @@ import { useRef } from 'react'
 import * as THREE from 'three'
 import type { AudioData } from '../hooks/useAudioAnalyzer'
 import type { Bars2DSettings } from '../types/config'
-import { calculateAudioColor } from '../utils/audioUtils'
 
 interface Bars2DProps {
   audioData: AudioData
@@ -23,7 +22,7 @@ export function Bars2D({ audioData, config, globalConfig }: Bars2DProps) {
     currentHeights.current = new Array(config.barCount).fill(0.1)
   }
   
-  useFrame((state) => {
+  useFrame(() => {
     if (!groupRef.current) return
     
     // Update each bar based on frequency data
