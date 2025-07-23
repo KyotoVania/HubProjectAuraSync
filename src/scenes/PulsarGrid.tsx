@@ -2,77 +2,104 @@ import { useFrame } from '@react-three/fiber'
 import { useRef } from 'react'
 import * as THREE from 'three'
 import { type AudioData } from '../hooks/useAudioAnalyzer'
+import type { GridSettings, GlobalSettings } from '../types/config'
+import { calculateAudioScale, calculateAudioColor, getAudioValue } from '../utils/audioUtils'
 
 interface PulsarGridProps {
   audioData: AudioData
+  config: GridSettings
+  globalConfig: GlobalSettings
 }
 
-export function PulsarGrid({ audioData }: PulsarGridProps) {
+export function PulsarGrid({ audioData, config: grid, globalConfig: global }: PulsarGridProps) {
   const groupRef = useRef<THREE.Group>(null)
   const meshRefs = useRef<(THREE.Mesh | null)[]>([])
+  const targetScales = useRef<number[]>([])
+  const currentScales = useRef<number[]>([])
   
-  const gridSize = 10
-  const spacing = 2
+  const gridSize = Math.sqrt(grid.instanceCount)
+  const spacing = grid.spacing[0]
   
   useFrame((state) => {
     if (!groupRef.current) return
     
-    // Rotate the entire grid with beat influence
-    const rotationSpeed = 0.1 + audioData.energy * 0.2
+    // Configurable rotation based on settings
+    const rotationSpeed = global.cameraOrbitSpeed + getAudioValue(audioData, grid.scaleAudioLink) * 0.1
     groupRef.current.rotation.y = state.clock.elapsedTime * rotationSpeed
     
-    // Beat pulse effect on the entire grid
-    if (audioData.beat) {
-      groupRef.current.scale.setScalar(1 + audioData.energy * 0.3)
-    } else {
-      groupRef.current.scale.lerp(new THREE.Vector3(1, 1, 1), 0.1)
+    // Subtle beat pulse effect on the entire grid
+    const targetGroupScale = 1 + (audioData.beat ? audioData.energy * 0.1 : 0)
+    groupRef.current.scale.lerp(new THREE.Vector3(targetGroupScale, targetGroupScale, targetGroupScale), 0.15)
+    
+    // Initialize arrays if needed
+    const totalCubes = Math.floor(grid.instanceCount)
+    if (targetScales.current.length !== totalCubes) {
+      targetScales.current = new Array(totalCubes).fill(grid.scaleBase)
+      currentScales.current = new Array(totalCubes).fill(grid.scaleBase)
     }
     
-    // Animate each cube based on frequency data and bands
+    // Animate each cube using configuration
     meshRefs.current.forEach((mesh, index) => {
-      if (!mesh) return
+      if (!mesh || index >= totalCubes) return
       
-      const totalCubes = gridSize * gridSize
       const frequencyIndex = Math.floor((index / totalCubes) * audioData.frequencies.length)
       const frequency = audioData.frequencies[frequencyIndex] || 0
       
-      // Use different bands for different sections of the grid
-      const x = Math.floor(index / gridSize)
-      const z = index % gridSize
-      let bandValue = 0
-      let hue = 0
+      // Calculate audio-reactive scale using configuration
+      const audioScale = calculateAudioScale(
+        audioData,
+        grid.scaleBase,
+        grid.scaleAudioLink,
+        grid.scaleMultiplier,
+        global.reactivityCurve,
+        global.volumeMultiplier
+      )
       
-      if (x < gridSize / 3) {
-        // Bass section (red-orange)
-        bandValue = audioData.bands.bass
-        hue = 0.05 + bandValue * 0.1
-      } else if (x < (2 * gridSize) / 3) {
-        // Mid section (green-yellow)
-        bandValue = audioData.bands.mid  
-        hue = 0.3 + bandValue * 0.2
-      } else {
-        // Treble section (blue-purple)
-        bandValue = audioData.bands.treble
-        hue = 0.7 + bandValue * 0.2
+      // Add frequency influence
+      const freqInfluence = (frequency / 255) * 0.5
+      targetScales.current[index] = audioScale + freqInfluence
+      
+      // Smooth interpolation with FFT smoothing
+      const lerpFactor = 1 - global.fftSmoothing
+      currentScales.current[index] += (targetScales.current[index] - currentScales.current[index]) * lerpFactor
+      mesh.scale.setScalar(currentScales.current[index])
+      
+      // Configurable color mode
+      if (grid.colorMode === 'audio-reactive') {
+        const material = mesh.material as THREE.MeshStandardMaterial
+        
+        // Calculate position-based hue for different sections
+        const x = Math.floor(index / gridSize)
+        const baseHue = (x / gridSize) * 0.8 // Spread hues across grid
+        
+        const [hue, sat, light] = calculateAudioColor(
+          audioData,
+          baseHue,
+          0.8,
+          0.4,
+          grid.scaleAudioLink,
+          global.reactivityCurve
+        )
+        
+        const targetColor = new THREE.Color().setHSL(hue, sat, light)
+        material.color.lerp(targetColor, lerpFactor)
+        
+        // Configurable emissive intensity
+        material.emissive.copy(material.color).multiplyScalar(grid.emissiveIntensity)
       }
       
-      // Scale based on both frequency and band
-      const baseScale = 1 + (frequency / 255) * 1.5
-      const bandScale = 1 + bandValue * 2
-      const finalScale = baseScale * bandScale
+      // Position noise if configured
+      if (grid.positionNoise.strength > 0) {
+        const noise = Math.sin(state.clock.elapsedTime * grid.positionNoise.speed + index) * grid.positionNoise.strength
+        mesh.position.y = noise
+      }
       
-      mesh.scale.setScalar(finalScale)
-      
-      // Enhanced color mapping
-      const material = mesh.material as THREE.MeshStandardMaterial
-      const saturation = 0.8 + audioData.energy * 0.2
-      const lightness = 0.4 + audioData.smoothedVolume * 0.4
-      
-      material.color.setHSL(hue, saturation, lightness)
-      
-      // Add some individual cube animation
-      mesh.rotation.x = state.clock.elapsedTime * (frequency / 255) * 2
-      mesh.rotation.z = state.clock.elapsedTime * bandValue
+      // Individual rotations if enabled
+      if (grid.rotationAudioLink) {
+        const audioValue = getAudioValue(audioData, grid.scaleAudioLink)
+        mesh.rotation.x = state.clock.elapsedTime * grid.rotationSpeed[0] * audioValue
+        mesh.rotation.z = state.clock.elapsedTime * grid.rotationSpeed[2] * audioValue
+      }
     })
   })
   
@@ -90,8 +117,12 @@ export function PulsarGrid({ audioData }: PulsarGridProps) {
             (z - gridSize / 2) * spacing
           ]}
         >
-          <boxGeometry args={[0.8, 0.8, 0.8]} />
-          <meshStandardMaterial color="cyan" />
+          <boxGeometry args={[1.0, 1.0, 1.0]} />
+          <meshStandardMaterial 
+            color="cyan" 
+            metalness={0.1}
+            roughness={0.4}
+          />
         </mesh>
       )
     }

@@ -3,13 +3,17 @@ import { OrbitControls, Stats } from '@react-three/drei'
 import { Suspense, useRef, useEffect } from 'react'
 import { useAudioAnalyzer } from './hooks/useAudioAnalyzer'
 import { useAuraStore } from './store/auraStore'
-import { PulsarGrid } from './scenes/PulsarGrid'
+import { useConfigStore } from './store/configStore'
+import { VisualizationRenderer } from './scenes/VisualizationRenderer'
+import { ConfigPanel } from './components/ConfigPanel'
 
 function App() {
   const audioRef = useRef<HTMLAudioElement>(null)
   const audioData = useAudioAnalyzer(audioRef.current || undefined)
   const { setAudioFile } = useAuraStore()
+  const { currentConfig } = useConfigStore()
   const currentUrlRef = useRef<string | null>(null)
+  
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -39,21 +43,29 @@ function App() {
     <div style={{ width: '100vw', height: '100vh', position: 'relative', background: '#000' }}>
       <Canvas
         camera={{
-          position: [0, 0, 10],
-          fov: 75,
+          position: [0, 8, 15],
+          fov: currentConfig.global.cameraFOV,
         }}
         dpr={[1, 2]}
         gl={{ antialias: true }}
       >
-        <color attach="background" args={['#0a0a0a']} />
+        <color attach="background" args={[currentConfig.global.bgColor]} />
         
         <Suspense fallback={null}>
           <ambientLight intensity={0.5} />
           <pointLight position={[10, 10, 10]} />
           
-          <PulsarGrid audioData={audioData} />
+          <VisualizationRenderer audioData={audioData} config={currentConfig} />
           
-          <OrbitControls enableDamping />
+          <OrbitControls 
+            enableDamping 
+            dampingFactor={0.05}
+            enableZoom={true}
+            enablePan={false}
+            maxPolarAngle={Math.PI / 2.2}
+            minPolarAngle={Math.PI / 6}
+            autoRotate={false}
+          />
           <Stats />
         </Suspense>
       </Canvas>
@@ -96,6 +108,8 @@ function App() {
           </div>
         </div>
       </div>
+      
+      <ConfigPanel />
     </div>
   )
 }
