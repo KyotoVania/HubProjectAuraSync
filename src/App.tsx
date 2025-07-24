@@ -9,7 +9,7 @@ import { ConfigPanel } from './components/ConfigPanel'
 function App() {
   const audioRef = useRef<HTMLAudioElement>(null)
   const audioData = useAudioAnalyzer(audioRef.current || undefined)
-  const { currentConfig } = useConfigStore()
+  const { global: globalConfig } = useConfigStore()
   const currentUrlRef = useRef<string | null>(null)
   
 
@@ -41,18 +41,18 @@ function App() {
       <Canvas
         camera={{
           position: [0, 8, 15],
-          fov: currentConfig.global.cameraFOV,
+          fov: globalConfig.cameraFOV,
         }}
         dpr={[1, 2]}
         gl={{ antialias: true }}
       >
-        <color attach="background" args={[currentConfig.global.bgColor]} />
+        <color attach="background" args={[globalConfig.bgColor]} />
         
         <Suspense fallback={null}>
           <ambientLight intensity={0.5} />
           <pointLight position={[10, 10, 10]} />
           
-          <VisualizationRenderer audioData={audioData} config={currentConfig} />
+          <VisualizationRenderer audioData={audioData} />
           
           <OrbitControls 
             enableDamping 
