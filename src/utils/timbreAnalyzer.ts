@@ -99,7 +99,7 @@ export class TimbreAnalyzer {
     }
 
     // Key detection using Krumhansl-Schmuckler algorithm
-    const { key, mode, correlation } = this.detectKey(melodic.pitchClass);
+    const { key, mode } = this.detectKey(melodic.pitchClass);
 
     // Calculate harmonic tension based on dissonance
     const tension = this.calculateTension(melodic.pitchClass, timbre.harmonicComplexity);

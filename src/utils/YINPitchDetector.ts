@@ -5,14 +5,12 @@ export class YINPitchDetector {
   private sampleRate: number;
   private bufferSize: number;
   private threshold: number;
-  private probabilityThreshold: number;
   private yinBuffer: Float32Array;
 
   constructor(sampleRate: number = 44100, bufferSize: number = 2048, threshold: number = 0.1) {
     this.sampleRate = sampleRate;
     this.bufferSize = bufferSize;
     this.threshold = threshold;
-    this.probabilityThreshold = 0.1;
     this.yinBuffer = new Float32Array(bufferSize / 2);
   }
 

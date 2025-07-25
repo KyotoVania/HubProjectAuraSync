@@ -85,10 +85,10 @@ const DROP_CONFIG = {
 };
 
 const TRANSIENT_CONFIG = {
-  bass: { threshold: 0.12, multiplier: 1.8, decay: 0.85 },
-  mid: { threshold: 0.10, multiplier: 2.0, decay: 0.9 },
-  treble: { threshold: 0.08, multiplier: 2.2, decay: 0.92 },
-  overall: { threshold: 0.15, multiplier: 1.7, decay: 0.88 },
+  bass: { threshold: 0.08, multiplier: 1.8, decay: 0.85 },     // Reduced from 0.12
+  mid: { threshold: 0.07, multiplier: 2.0, decay: 0.9 },      // Reduced from 0.10
+  treble: { threshold: 0.06, multiplier: 2.2, decay: 0.92 },  // Reduced from 0.08
+  overall: { threshold: 0.12, multiplier: 1.7, decay: 0.88 }, // Reduced from 0.15
 };
 
 // Musical note frequencies (A4 = 440Hz)

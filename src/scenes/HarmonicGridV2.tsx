@@ -17,11 +17,10 @@ interface HarmonicGridV2Settings {
   bpmScrollMode: 'beat' | 'continuous' | 'quantized';
   beatDivision: number; // 1, 2, 4, 8, 16
 
-  // Melodic Options
-  melodicHighlight: boolean;
+  // Melodic Options - SIMPLIFIED: Combined melodicHighlight and noteTrails
+  melodicVisualization: boolean; // Replaces both melodicHighlight and noteTrails
   harmonicResonance: boolean;
   chromaColorMode: boolean;
-  noteTrails: boolean;
 
   // Visual Style
   frequencyScale: 'linear' | 'logarithmic' | 'mel' | 'musical';
@@ -49,7 +48,6 @@ interface HarmonicGridV2Settings {
   depthEffect: boolean;
   mirrorMode: boolean;
   rotationEffect: boolean;
-  kaleidoscopeMode: boolean;
 }
 
 // Note frequencies for musical scale mode
@@ -64,7 +62,7 @@ const NOTE_FREQUENCIES = [
   2093.00, 2217.46, 2349.32, 2489.02, 2637.02, 2793.83, 2959.96, 3135.96, 3322.44, 3520.00, 3729.31, 3951.07, // C7-B7
 ];
 
-// Particle system for transients
+// Improved particle system for transients
 class TransientParticle {
   position: THREE.Vector3;
   velocity: THREE.Vector3;
@@ -76,9 +74,9 @@ class TransientParticle {
   constructor(x: number, y: number, z: number, band: 'bass' | 'mid' | 'treble') {
     this.position = new THREE.Vector3(x, y, z);
     this.velocity = new THREE.Vector3(
-      (Math.random() - 0.5) * 2,
-      Math.random() * 3 + 2,
-      (Math.random() - 0.5) * 2
+      (Math.random() - 0.5) * 3,
+      Math.random() * 4 + 3, // Increased upward velocity
+      (Math.random() - 0.5) * 3
     );
     this.life = 1.0;
     this.maxLife = 1.0;
@@ -86,16 +84,16 @@ class TransientParticle {
     // Color based on frequency band
     switch(band) {
       case 'bass':
-        this.color = new THREE.Color(1, 0.2, 0.2);
-        this.size = 0.3;
+        this.color = new THREE.Color(1, 0.3, 0.3);
+        this.size = 0.4; // Larger bass particles
         break;
       case 'mid':
-        this.color = new THREE.Color(0.2, 1, 0.2);
-        this.size = 0.25;
+        this.color = new THREE.Color(0.3, 1, 0.3);
+        this.size = 0.3;
         break;
       case 'treble':
-        this.color = new THREE.Color(0.2, 0.2, 1);
-        this.size = 0.2;
+        this.color = new THREE.Color(0.3, 0.3, 1);
+        this.size = 0.25;
         break;
     }
   }
@@ -103,7 +101,8 @@ class TransientParticle {
   update(delta: number) {
     this.position.add(this.velocity.clone().multiplyScalar(delta));
     this.velocity.y -= 9.8 * delta; // Gravity
-    this.life -= delta * 2;
+    this.velocity.multiplyScalar(0.98); // Air resistance
+    this.life -= delta * 1.5; // Longer life
     return this.life > 0;
   }
 }
@@ -111,6 +110,7 @@ class TransientParticle {
 // 2. Create the scene component
 const HarmonicGridV2Component: React.FC<{ audioData: AudioData; config: HarmonicGridV2Settings; globalConfig: GlobalSettings }> = ({ audioData, config }) => {
   const meshRef = useRef<THREE.InstancedMesh>(null!);
+  const mirrorMeshRef = useRef<THREE.InstancedMesh>(null!);
   const particleMeshRef = useRef<THREE.InstancedMesh>(null!);
   const dummy = new THREE.Object3D();
 
@@ -128,7 +128,7 @@ const HarmonicGridV2Component: React.FC<{ audioData: AudioData; config: Harmonic
 
   // Particle system
   const particlesRef = useRef<TransientParticle[]>([]);
-  const maxParticles = 100;
+  const maxParticles = 150; // Increased for better visibility
 
   // Visual effects state
   const flashDecay = useRef(0);
@@ -336,21 +336,32 @@ const HarmonicGridV2Component: React.FC<{ audioData: AudioData; config: Harmonic
       }
     }
 
-    // --- Melodic Highlighting ---
-    if (config.melodicHighlight && melodicFeatures.noteConfidence > 0.5) {
+    // --- IMPROVED Melodic Highlighting ---
+    if (config.melodicVisualization && melodicFeatures.noteConfidence > 0.5) {
       const fundamentalRow = findFrequencyRow(melodicFeatures.dominantFrequency);
 
-      // Highlight fundamental frequency
+      // Highlight fundamental frequency with stronger intensity
       if (fundamentalRow >= 0 && fundamentalRow < numRows) {
-        noteTrails[fundamentalRow][numCols - 1] = melodicFeatures.noteConfidence;
+        noteTrails[fundamentalRow][numCols - 1] = melodicFeatures.noteConfidence * 1.5; // Amplified
 
-        // Harmonic resonance
+        // IMPROVED Harmonic resonance
         if (config.harmonicResonance) {
-          // Highlight harmonics
-          for (let harmonic = 2; harmonic <= 5; harmonic++) {
+          // Highlight harmonics with less steep decay
+          for (let harmonic = 2; harmonic <= 6; harmonic++) {
             const harmonicRow = findFrequencyRow(melodicFeatures.dominantFrequency * harmonic);
             if (harmonicRow >= 0 && harmonicRow < numRows) {
-              noteTrails[harmonicRow][numCols - 1] = melodicFeatures.noteConfidence * (0.8 / harmonic);
+              // Use sqrt decay instead of linear for better visibility
+              const intensity = melodicFeatures.noteConfidence * (1.2 / Math.sqrt(harmonic));
+              noteTrails[harmonicRow][numCols - 1] = Math.max(noteTrails[harmonicRow][numCols - 1], intensity);
+            }
+          }
+
+          // Add subharmonics for richer visualization
+          for (let subharmonic = 2; subharmonic <= 3; subharmonic++) {
+            const subharmonicRow = findFrequencyRow(melodicFeatures.dominantFrequency / subharmonic);
+            if (subharmonicRow >= 0 && subharmonicRow < numRows) {
+              const intensity = melodicFeatures.noteConfidence * (0.8 / subharmonic);
+              noteTrails[subharmonicRow][numCols - 1] = Math.max(noteTrails[subharmonicRow][numCols - 1], intensity);
             }
           }
         }
@@ -363,28 +374,28 @@ const HarmonicGridV2Component: React.FC<{ audioData: AudioData; config: Harmonic
       }
     }
 
-    // --- Ripple Effect on Transients ---
+    // --- IMPROVED Ripple Effect on Transients ---
     if (config.rippleEffect) {
-      // Update existing ripples
+      // Update existing ripples with better propagation
       for (let row = 0; row < numRows; row++) {
         for (let col = 0; col < numCols; col++) {
           rippleGrid[row][col] *= config.rippleDecay;
         }
       }
 
-      // Add new ripples on transients
+      // Add new ripples on transients with improved spawning
       if (transients.bass || transients.mid || transients.treble) {
         const rippleCol = numCols - 1;
 
         if (transients.bass) {
           const bassRow = Math.floor(numRows * 0.15);
-          rippleGrid[bassRow][rippleCol] = 1.0;
+          rippleGrid[bassRow][rippleCol] = 1.5; // Stronger initial ripple
 
-          // Spawn particles
+          // IMPROVED Particle spawning
           if (config.transientParticles && particlesRef.current.length < maxParticles) {
             const worldPos = new THREE.Vector3(
               (rippleCol - numCols / 2) * spacing,
-              2,
+              3, // Higher spawn height
               (bassRow - numRows / 2) * spacing
             );
             particlesRef.current.push(new TransientParticle(worldPos.x, worldPos.y, worldPos.z, 'bass'));
@@ -393,12 +404,12 @@ const HarmonicGridV2Component: React.FC<{ audioData: AudioData; config: Harmonic
 
         if (transients.mid) {
           const midRow = Math.floor(numRows * 0.5);
-          rippleGrid[midRow][rippleCol] = 1.0;
+          rippleGrid[midRow][rippleCol] = 1.5;
 
           if (config.transientParticles && particlesRef.current.length < maxParticles) {
             const worldPos = new THREE.Vector3(
               (rippleCol - numCols / 2) * spacing,
-              2,
+              3,
               (midRow - numRows / 2) * spacing
             );
             particlesRef.current.push(new TransientParticle(worldPos.x, worldPos.y, worldPos.z, 'mid'));
@@ -407,12 +418,12 @@ const HarmonicGridV2Component: React.FC<{ audioData: AudioData; config: Harmonic
 
         if (transients.treble) {
           const trebleRow = Math.floor(numRows * 0.85);
-          rippleGrid[trebleRow][rippleCol] = 1.0;
+          rippleGrid[trebleRow][rippleCol] = 1.5;
 
           if (config.transientParticles && particlesRef.current.length < maxParticles) {
             const worldPos = new THREE.Vector3(
               (rippleCol - numCols / 2) * spacing,
-              2,
+              3,
               (trebleRow - numRows / 2) * spacing
             );
             particlesRef.current.push(new TransientParticle(worldPos.x, worldPos.y, worldPos.z, 'treble'));
@@ -420,11 +431,13 @@ const HarmonicGridV2Component: React.FC<{ audioData: AudioData; config: Harmonic
         }
       }
 
-      // Propagate ripples
+      // IMPROVED Ripple propagation - both horizontal and vertical
       for (let row = 1; row < numRows - 1; row++) {
-        for (let col = 0; col < numCols; col++) {
-          const spread = 0.15 * config.rippleSpeed;
-          rippleGrid[row][col] += (rippleGrid[row - 1][col] + rippleGrid[row + 1][col]) * spread;
+        for (let col = 1; col < numCols - 1; col++) {
+          const spread = 0.2 * config.rippleSpeed; // Increased spread
+          const neighbors = rippleGrid[row - 1][col] + rippleGrid[row + 1][col] +
+                          rippleGrid[row][col - 1] + rippleGrid[row][col + 1];
+          rippleGrid[row][col] += neighbors * spread * 0.25; // Average of 4 neighbors
         }
       }
     }
@@ -442,7 +455,7 @@ const HarmonicGridV2Component: React.FC<{ audioData: AudioData; config: Harmonic
       rotationAngle.current += delta * rotationSpeed;
     }
 
-    // --- Update Particles ---
+    // --- IMPROVED Update Particles ---
     particlesRef.current = particlesRef.current.filter(particle => particle.update(delta));
 
     // --- Update InstancedMesh ---
@@ -463,8 +476,8 @@ const HarmonicGridV2Component: React.FC<{ audioData: AudioData; config: Harmonic
         // Combine different height sources
         const baseHeight = smoothedGrid[row][col];
         const rippleHeight = config.rippleEffect ? rippleGrid[row][col] : 0;
-        const noteTrailHeight = config.noteTrails ? noteTrails[row][col] : 0;
-        const combinedHeight = baseHeight + rippleHeight * 0.3 + noteTrailHeight * 0.5;
+        const noteTrailHeight = config.melodicVisualization ? noteTrails[row][col] : 0;
+        const combinedHeight = baseHeight + rippleHeight * 0.4 + noteTrailHeight * 0.7; // Increased multipliers
 
         const height = combinedHeight * heightMultiplier;
         const finalHeight = Math.max(0.05, height);
@@ -483,9 +496,10 @@ const HarmonicGridV2Component: React.FC<{ audioData: AudioData; config: Harmonic
 
         dummy.position.set(x, finalHeight / 2, z);
 
-        // Add depth effect
+        // IMPROVED Depth effect
         if (config.depthEffect) {
-          const depthScale = 1 - (col / numCols) * 0.3;
+          // Exponential decay for more pronounced effect
+          const depthScale = Math.pow(1 - (col / numCols), 1.8); // More aggressive depth
           dummy.scale.set(depthScale, finalHeight, depthScale);
         } else {
           dummy.scale.set(1, finalHeight, 1);
@@ -515,18 +529,19 @@ const HarmonicGridV2Component: React.FC<{ audioData: AudioData; config: Harmonic
           }
         }
 
-        // Note trail highlighting
+        // Note trail highlighting with enhanced visibility
         if (noteTrailHeight > 0.1) {
-          color.lerp(noteHighlight, noteTrailHeight);
+          color.lerp(noteHighlight, noteTrailHeight * 1.5); // More pronounced highlighting
         }
 
         // Height-based brightness
         const brightness = 0.3 + combinedHeight * 0.7;
         color.multiplyScalar(brightness);
 
-        // Column age fading
+        // IMPROVED Column age fading with depth effect
         const columnAge = 1 - (col / numCols);
-        color.multiplyScalar(0.5 + columnAge * 0.5);
+        const ageFading = config.depthEffect ? 0.3 + columnAge * 0.7 : 0.5 + columnAge * 0.5;
+        color.multiplyScalar(ageFading);
 
         // Flash effect
         color.lerp(flash, flashDecay.current);
@@ -540,34 +555,46 @@ const HarmonicGridV2Component: React.FC<{ audioData: AudioData; config: Harmonic
       }
     }
 
-    // Mirror mode
-    if (config.mirrorMode) {
-      // Duplicate the grid in mirror
-      for (let row = 0; row < numRows; row++) {
-        for (let col = 0; col < numCols; col++) {
-          const mirrorId = (row + numRows) * numCols + col;
-          const sourceId = row * numCols + col;
-
-          // Copy matrix with Y-flip
-          meshRef.current.getMatrixAt(sourceId, dummy.matrix);
-          dummy.position.z *= -1;
-          dummy.updateMatrix();
-          meshRef.current.setMatrixAt(mirrorId, dummy.matrix);
-
-          // Copy color
-          colorBuffer[mirrorId * 3] = colorBuffer[sourceId * 3];
-          colorBuffer[mirrorId * 3 + 1] = colorBuffer[sourceId * 3 + 1];
-          colorBuffer[mirrorId * 3 + 2] = colorBuffer[sourceId * 3 + 2];
-        }
-      }
-    }
-
     meshRef.current.instanceMatrix.needsUpdate = true;
     if (meshRef.current.instanceColor) {
       meshRef.current.instanceColor.needsUpdate = true;
     }
 
-    // Update particle instances
+    // FIXED Mirror mode - use separate mesh
+    if (config.mirrorMode && mirrorMeshRef.current) {
+      // Copy data to mirror mesh with transformation
+      for (let row = 0; row < numRows; row++) {
+        for (let col = 0; col < numCols; col++) {
+          const sourceId = row * numCols + col;
+
+          // Get original matrix
+          meshRef.current.getMatrixAt(sourceId, dummy.matrix);
+          dummy.matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
+
+          // Mirror along Z-axis
+          dummy.position.z *= -1;
+          dummy.position.z -= spacing; // Offset to avoid overlap
+          dummy.updateMatrix();
+
+          mirrorMeshRef.current.setMatrixAt(sourceId, dummy.matrix);
+
+          // Copy color with slight dimming
+          const r = colorBuffer[sourceId * 3] * 0.7;
+          const g = colorBuffer[sourceId * 3 + 1] * 0.7;
+          const b = colorBuffer[sourceId * 3 + 2] * 0.7;
+          colorBuffer[sourceId * 3] = r;
+          colorBuffer[sourceId * 3 + 1] = g;
+          colorBuffer[sourceId * 3 + 2] = b;
+        }
+      }
+
+      mirrorMeshRef.current.instanceMatrix.needsUpdate = true;
+      if (mirrorMeshRef.current.instanceColor) {
+        mirrorMeshRef.current.instanceColor.needsUpdate = true;
+      }
+    }
+
+    // IMPROVED Update particle instances
     if (config.transientParticles && particleMeshRef.current) {
       particlesRef.current.forEach((particle, index) => {
         dummy.position.copy(particle.position);
@@ -580,12 +607,17 @@ const HarmonicGridV2Component: React.FC<{ audioData: AudioData; config: Harmonic
         color.toArray(particleColorBuffer, index * 3);
       });
 
-      // Hide unused particles
+      // Hide unused particles properly
       for (let i = particlesRef.current.length; i < maxParticles; i++) {
-        dummy.position.set(0, -1000, 0);
+        dummy.position.set(0, -1000, 0); // Move far away
         dummy.scale.setScalar(0);
         dummy.updateMatrix();
         particleMeshRef.current.setMatrixAt(i, dummy.matrix);
+
+        // Set transparent color
+        particleColorBuffer[i * 3] = 0;
+        particleColorBuffer[i * 3 + 1] = 0;
+        particleColorBuffer[i * 3 + 2] = 0;
       }
 
       particleMeshRef.current.instanceMatrix.needsUpdate = true;
@@ -595,7 +627,7 @@ const HarmonicGridV2Component: React.FC<{ audioData: AudioData; config: Harmonic
     }
   });
 
-  const instanceCount = config.mirrorMode ? gridSize * gridSize * 2 : gridSize * gridSize;
+  const instanceCount = gridSize * gridSize;
 
   return (
       <group>
@@ -610,10 +642,25 @@ const HarmonicGridV2Component: React.FC<{ audioData: AudioData; config: Harmonic
           <instancedBufferAttribute attach="instanceColor" args={[colorBuffer, 3]} />
         </instancedMesh>
 
+        {config.mirrorMode && (
+          <instancedMesh ref={mirrorMeshRef} args={[undefined, undefined, instanceCount]}>
+            <boxGeometry args={[0.8, 1, 0.8]} />
+            <meshStandardMaterial
+                metalness={0.3}
+                roughness={0.4}
+                emissive={new THREE.Color(baseColor)}
+                emissiveIntensity={0.05}
+                transparent
+                opacity={0.7}
+            />
+            <instancedBufferAttribute attach="instanceColor" args={[colorBuffer, 3]} />
+          </instancedMesh>
+        )}
+
         {config.transientParticles && (
           <instancedMesh ref={particleMeshRef} args={[undefined, undefined, maxParticles]}>
-            <sphereGeometry args={[0.1, 8, 6]} />
-            <meshBasicMaterial transparent opacity={0.8} />
+            <sphereGeometry args={[0.15, 8, 6]} />
+            <meshBasicMaterial transparent opacity={0.9} />
             <instancedBufferAttribute attach="instanceColor" args={[particleColorBuffer, 3]} />
           </instancedMesh>
         )}
@@ -621,7 +668,7 @@ const HarmonicGridV2Component: React.FC<{ audioData: AudioData; config: Harmonic
   );
 };
 
-// 3. Define the scene configuration
+// 3. UPDATED scene configuration - removed kaleidoscopeMode and simplified melodic options
 const schema: SceneSettingsSchema = {
   gridSize: { type: 'slider', label: 'Grid Size', min: 8, max: 64, step: 4 },
   spacing: { type: 'slider', label: 'Spacing', min: 0.5, max: 5, step: 0.1 },
@@ -639,8 +686,8 @@ const schema: SceneSettingsSchema = {
   ]},
   beatDivision: { type: 'slider', label: 'Beat Division', min: 1, max: 16, step: 1 },
 
-  // Melodic
-  melodicHighlight: { type: 'select', label: 'Melodic Highlight', options: [
+  // Melodic - SIMPLIFIED
+  melodicVisualization: { type: 'select', label: 'Melodic Lines', options: [
     { value: 'true', label: 'Enabled' },
     { value: 'false', label: 'Disabled' },
   ]},
@@ -649,10 +696,6 @@ const schema: SceneSettingsSchema = {
     { value: 'false', label: 'Disabled' },
   ]},
   chromaColorMode: { type: 'select', label: 'Chroma Colors', options: [
-    { value: 'true', label: 'Enabled' },
-    { value: 'false', label: 'Disabled' },
-  ]},
-  noteTrails: { type: 'select', label: 'Note Trails', options: [
     { value: 'true', label: 'Enabled' },
     { value: 'false', label: 'Disabled' },
   ]},
@@ -706,10 +749,6 @@ const schema: SceneSettingsSchema = {
     { value: 'true', label: 'Enabled' },
     { value: 'false', label: 'Disabled' },
   ]},
-  kaleidoscopeMode: { type: 'select', label: 'Kaleidoscope', options: [
-    { value: 'true', label: 'Enabled' },
-    { value: 'false', label: 'Disabled' },
-  ]},
 };
 
 export const harmonicGridV2Scene: SceneDefinition<HarmonicGridV2Settings> = {
@@ -726,10 +765,9 @@ export const harmonicGridV2Scene: SceneDefinition<HarmonicGridV2Settings> = {
       bpmScrollMode: 'continuous',
       beatDivision: 4,
 
-      melodicHighlight: true,
+      melodicVisualization: true, // Replaces melodicHighlight and noteTrails
       harmonicResonance: true,
       chromaColorMode: false,
-      noteTrails: true,
 
       frequencyScale: 'logarithmic',
       smoothingFactor: 0.85,
@@ -753,9 +791,7 @@ export const harmonicGridV2Scene: SceneDefinition<HarmonicGridV2Settings> = {
       depthEffect: true,
       mirrorMode: false,
       rotationEffect: false,
-      kaleidoscopeMode: false,
     },
     schema,
   },
 };
-
