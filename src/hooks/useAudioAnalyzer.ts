@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { BPMDetector } from '../utils/BPMDetector';
 
+// Helper pour calculer la médiane d'un tableau de nombres
+const calculateMedian = (arr: number[]): number => {
+  if (arr.length === 0) return 0;
+  const sorted = [...arr].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+};
+
 export interface FrequencyBands {
   bass: number; // 20-250 Hz
   mid: number; // 250-4000 Hz
@@ -164,8 +172,12 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
   const dropIntensityRef = useRef(0);
   const lastDropTimeRef = useRef(0);
 
-  // New refs for melody and rhythm
+  // NOUVEAU: Refs pour le BPM Detector basé sur l'autocorrélation
   const bpmDetectorRef = useRef(new BPMDetector());
+  const odfHistoryRef = useRef<number[]>([]); // Historique de l'ODF pour l'ACF
+  const lastBeatTimeRef = useRef(0);
+  const ODF_SAMPLE_RATE = 45; // On analyse le tempo à 45 Hz, suffisant et performant
+  const ODF_HISTORY_SIZE = 256; // Environ 5.6 secondes d'historique
 
   // --- Enhanced Analysis Functions ---
 
@@ -211,7 +223,10 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
 
     let totalEnergy = 0;
     let centroidSum = 0;
-    let flux = 0;
+
+    // --- NOUVELLE LOGIQUE POUR L'ONSET DETECTION FUNCTION (ODF) ---
+    // Basée sur le flux spectral agrégé par la médiane
+    const spectralChanges: number[] = [];
 
     for (let i = 1; i < frequencies.length - 1; i++) {
       const magnitude = frequencies[i] / 255;
@@ -221,8 +236,17 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
       centroidSum += magnitude * freq;
 
       const prevMag = prevFrequenciesRef.current[i];
-      flux += Math.max(0, magnitude - prevMag);
+      const change = magnitude - prevMag;
+
+      // Redressement demi-onde : on ne garde que les changements positifs
+      if (change > 0) {
+        spectralChanges.push(change);
+      }
     }
+
+    // Calcul de la médiane des changements positifs au lieu de la somme
+    const flux = calculateMedian(spectralChanges);
+    // --- FIN DE LA NOUVELLE LOGIQUE ODF ---
 
     const centroid = totalEnergy > 0 ? (centroidSum / totalEnergy) / nyquist : 0;
 
@@ -254,7 +278,7 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     return {
       centroid: Math.min(1, centroid),
       spread: Math.min(1, spread),
-      flux: Math.min(1, flux / 10),
+      flux: Math.min(1, flux * 10), // On multiplie par 10 pour normaliser, la médiane étant plus petite que la somme
       rolloff: Math.min(1, rolloff),
     };
   };
@@ -340,16 +364,27 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
   };
 
   // NEW: Enhanced rhythmic analysis
-  const calculateRhythmicFeatures = (audioData: Partial<AudioData>, currentTime: number): RhythmicFeatures => {
-    const bpmDetector = bpmDetectorRef.current;
-    const bpm = bpmDetector.detectBPM(audioData as AudioData, currentTime);
-    const beatPhase = bpmDetector.getBeatPhase(currentTime, bpm);
-    const confidence = bpmDetector.getConfidence();
+  const calculateRhythmicFeatures = (spectralFlux: number, currentTime: number, isOverallTransient: boolean): RhythmicFeatures => {
+    // 1. Ajouter la valeur actuelle de l'ODF (flux) à notre historique
+    odfHistoryRef.current.push(spectralFlux);
+    if (odfHistoryRef.current.length > ODF_HISTORY_SIZE) {
+      odfHistoryRef.current.shift();
+    }
+
+    // 2. Appeler le nouveau détecteur avec l'historique
+    const bpm = bpmDetectorRef.current.detectBPM(odfHistoryRef.current, ODF_SAMPLE_RATE);
+    const confidence = bpmDetectorRef.current.getConfidence();
+
+    // Mise à jour de lastBeatTime si un transient fort est détecté (pour la phase)
+    if (isOverallTransient) { // Utiliser le transient du frame actuel pour une synchronisation parfaite
+      lastBeatTimeRef.current = currentTime;
+    }
+
+    const beatPhase = bpmDetectorRef.current.getBeatPhase(currentTime, bpm, lastBeatTimeRef.current);
 
     // Detect subdivision by analyzing transient patterns
     let subdivision = 1;
     if (audioData.transients) {
-      // Simple subdivision detection - can be enhanced
       const transientCount = [
         audioData.transients.bass,
         audioData.transients.mid,
@@ -360,15 +395,12 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
       if (transientCount === 3) subdivision = 4;
     }
 
-    // Calculate groove (rhythmic stability)
-    const groove = confidence * Math.min(1, (bpm - 60) / 120); // Scale groove with confidence and BPM
-
     return {
-      bpm: Math.round(bpm * 10) / 10, // More precision
-      bpmConfidence: Math.round(confidence * 100),
+      bpm: Math.round(bpm * 10) / 10,
+      bpmConfidence: confidence * 100,
       beatPhase: Math.round(beatPhase * 1000) / 1000,
       subdivision,
-      groove: Math.round(groove * 100)
+      groove: confidence * 100
     };
   };
 
@@ -533,15 +565,10 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
       const dropIntensity = detectDrop(normalizedEnergy);
       const transients = detectTransients(bands, energy);
 
-      // Calculate rhythmic features with current data
+      // MODIFICATION: Appel à la nouvelle fonction rythmique avec le transient actuel
       const currentTime = performance.now() / 1000;
-      const partialAudioData: Partial<AudioData> = {
-        bands,
-        transients,
-        spectralFeatures,
-        energy,
-      };
-      const rhythmicFeatures = calculateRhythmicFeatures(partialAudioData, currentTime);
+      // On passe le flux spectral ET le transient du frame actuel pour une synchronisation parfaite
+      const rhythmicFeatures = calculateRhythmicFeatures(spectralFeatures.flux, currentTime, transients.overall);
 
       setAudioData(prev => ({
         ...prev,
