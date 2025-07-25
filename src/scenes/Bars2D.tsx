@@ -68,7 +68,7 @@ const Bars2DComponent: React.FC<{ audioData: AudioData; config: Bars2DSettings; 
             
           case "rainbow":
             // Rainbow spectrum across bars
-            const rainbowHue = (index / config.barCount)
+            const rainbowHue = (index / config.barCount) * 1.0
             const intensity = frequency / 255
             material.color.setHSL(rainbowHue, 0.8, 0.3 + intensity * 0.4)
             break

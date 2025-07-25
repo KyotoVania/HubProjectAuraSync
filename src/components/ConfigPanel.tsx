@@ -108,8 +108,17 @@ export function ConfigPanel() {
           <div key={key} style={{ marginBottom: '15px' }}>
             <label style={{ display: 'block', marginBottom: '4px' }}>{control.label}:</label>
             <select
-              value={value}
-              onChange={(e) => updateVisualizationSettings({ [key]: e.target.value })}
+              value={String(value)} // Ensure value is a string for the select
+              onChange={(e) => {
+                // Check if the value should be a boolean
+                let newValue: any = e.target.value;
+                if (e.target.value === 'true') {
+                  newValue = true;
+                } else if (e.target.value === 'false') {
+                  newValue = false;
+                }
+                updateVisualizationSettings({ [key]: newValue });
+              }}
               style={selectStyle}
             >
               {control.options?.map((option) => (
