@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { BPMDetector } from '../utils/BPMDetector';
+import { YINPitchDetector } from '../utils/YINPitchDetector';
+import { TimbreAnalyzer, type TimbreProfile, type MusicalContext } from '../utils/timbreAnalyzer';
 
 // Helper pour calculer la médiane d'un tableau de nombres
 const calculateMedian = (arr: number[]): number => {
@@ -57,6 +59,9 @@ export interface AudioData {
   spectralFeatures: SpectralFeatures;
   melodicFeatures: MelodicFeatures;
   rhythmicFeatures: RhythmicFeatures;
+  // NEW: Advanced timbre and musical analysis
+  timbreProfile: TimbreProfile;
+  musicalContext: MusicalContext;
   // Legacy compatibility
   bass: number;
   mids: number;
@@ -141,6 +146,23 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
       subdivision: 1,
       groove: 0
     },
+    // NEW: Initialiser des valeurs par défaut pour le profil timbral et le contexte musical
+    timbreProfile: {
+      brightness: 0,
+      warmth: 0,
+      richness: 0,
+      clarity: 0,
+      attack: 0,
+      dominantChroma: 0,
+      harmonicComplexity: 0
+    },
+    musicalContext: {
+      notePresent: false,
+      noteStability: 0,
+      key: 'C',
+      mode: 'unknown',
+      tension: 0
+    },
     bass: 0,
     mids: 0,
     treble: 0,
@@ -171,6 +193,12 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
   const prevNormalizedEnergyRef = useRef(0);
   const dropIntensityRef = useRef(0);
   const lastDropTimeRef = useRef(0);
+
+  // NEW: YIN Pitch Detector for superior fundamental frequency detection
+  const yinDetectorRef = useRef<YINPitchDetector | null>(null);
+
+  // NEW: Timbre Analyzer for advanced musical analysis
+  const timbreAnalyzerRef = useRef<TimbreAnalyzer | null>(null);
 
   // NOUVEAU: Refs pour le BPM Detector basé sur l'autocorrélation
   const bpmDetectorRef = useRef(new BPMDetector());
@@ -224,8 +252,7 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     let totalEnergy = 0;
     let centroidSum = 0;
 
-    // --- NOUVELLE LOGIQUE POUR L'ONSET DETECTION FUNCTION (ODF) ---
-    // Basée sur le flux spectral agrégé par la médiane
+    // Onset Detection Function (ODF) basée sur le flux spectral médian
     const spectralChanges: number[] = [];
 
     for (let i = 1; i < frequencies.length - 1; i++) {
@@ -238,16 +265,13 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
       const prevMag = prevFrequenciesRef.current[i];
       const change = magnitude - prevMag;
 
-      // Redressement demi-onde : on ne garde que les changements positifs
+      // Redressement demi-onde : changements positifs uniquement
       if (change > 0) {
         spectralChanges.push(change);
       }
     }
 
-    // Calcul de la médiane des changements positifs au lieu de la somme
     const flux = calculateMedian(spectralChanges);
-    // --- FIN DE LA NOUVELLE LOGIQUE ODF ---
-
     const centroid = totalEnergy > 0 ? (centroidSum / totalEnergy) / nyquist : 0;
 
     let cumulativeEnergy = 0;
@@ -271,6 +295,7 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     }
     const spread = totalEnergy > 0 ? Math.sqrt(spreadSum / totalEnergy) / nyquist : 0;
 
+    // Mise à jour de l'historique des fréquences
     for (let i = 0; i < frequencies.length; i++) {
       prevFrequenciesRef.current[i] = frequencies[i] / 255;
     }
@@ -278,65 +303,105 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     return {
       centroid: Math.min(1, centroid),
       spread: Math.min(1, spread),
-      flux: Math.min(1, flux * 10), // On multiplie par 10 pour normaliser, la médiane étant plus petite que la somme
+      flux: Math.min(1, flux * 10),
       rolloff: Math.min(1, rolloff),
     };
   };
 
-  // NEW: Melodic analysis
-  const calculateMelodicFeatures = (frequencies: Uint8Array, sampleRate: number): MelodicFeatures => {
-    const nyquist = sampleRate / 2;
-    const binSize = nyquist / frequencies.length;
+  // YIN-based melodic analysis with robust chromagram
+  const calculateMelodicFeatures = (
+    waveform: Uint8Array,
+    frequencies: Uint8Array,
+    sampleRate: number
+  ): MelodicFeatures => {
+    // Initialize YIN detector with improved settings
+    if (!yinDetectorRef.current) {
+      yinDetectorRef.current = new YINPitchDetector(sampleRate, 4096, 0.15); // Larger buffer, higher threshold
+    }
 
-    // Find dominant frequency using parabolic interpolation
-    let maxMagnitude = 0;
-    let maxBin = 0;
+    // Convert waveform for YIN algorithm with better normalization
+    const float32Waveform = new Float32Array(waveform.length);
+    let maxValue = 0;
 
-    // Focus on melodic range (80Hz - 2000Hz)
-    const minBin = Math.floor(80 / binSize);
-    const maxBin_ = Math.floor(2000 / binSize);
+    // First pass: find max value for proper normalization
+    for (let i = 0; i < waveform.length; i++) {
+      const sample = Math.abs((waveform[i] - 128) / 128);
+      if (sample > maxValue) maxValue = sample;
+    }
 
-    for (let i = minBin; i < Math.min(maxBin_, frequencies.length); i++) {
-      if (frequencies[i] > maxMagnitude) {
-        maxMagnitude = frequencies[i];
-        maxBin = i;
+    // Second pass: normalize properly
+    const normalizationFactor = maxValue > 0 ? 1 / maxValue : 1;
+    for (let i = 0; i < waveform.length; i++) {
+      float32Waveform[i] = ((waveform[i] - 128) / 128) * normalizationFactor;
+    }
+
+    // YIN pitch detection
+    const pitchResult = yinDetectorRef.current.detectPitch(float32Waveform);
+    let dominantFreq = pitchResult.frequency;
+    let noteConfidence = pitchResult.probability;
+
+    // FALLBACK: If YIN fails, use spectral peak detection
+    if (dominantFreq <= 0 || noteConfidence < 0.3) {
+      const nyquist = sampleRate / 2;
+      const binSize = nyquist / frequencies.length;
+
+      let maxMagnitude = 0;
+      let maxBin = 0;
+
+      // Focus on melodic range (80Hz - 1000Hz)
+      const minBin = Math.floor(80 / binSize);
+      const maxBinLimit = Math.floor(1000 / binSize);
+
+      for (let i = minBin; i < Math.min(maxBinLimit, frequencies.length); i++) {
+        if (frequencies[i] > maxMagnitude) {
+          maxMagnitude = frequencies[i];
+          maxBin = i;
+        }
+      }
+
+      if (maxMagnitude > 30) { // Minimum threshold for detection
+        // Parabolic interpolation for better accuracy
+        if (maxBin > 0 && maxBin < frequencies.length - 1) {
+          const y1 = frequencies[maxBin - 1];
+          const y2 = frequencies[maxBin];
+          const y3 = frequencies[maxBin + 1];
+
+          const x0 = (y3 - y1) / (2 * (2 * y2 - y1 - y3));
+          dominantFreq = (maxBin + x0) * binSize;
+        } else {
+          dominantFreq = maxBin * binSize;
+        }
+
+        noteConfidence = Math.min(0.8, maxMagnitude / 255); // Cap confidence from spectral method
       }
     }
 
-    // Parabolic interpolation for more accurate frequency
-    let dominantFreq = maxBin * binSize;
-    if (maxBin > 0 && maxBin < frequencies.length - 1) {
-      const y1 = frequencies[maxBin - 1];
-      const y2 = frequencies[maxBin];
-      const y3 = frequencies[maxBin + 1];
-
-      const x0 = (y3 - y1) / (2 * (2 * y2 - y1 - y3));
-      dominantFreq = (maxBin + x0) * binSize;
-    }
-
-    // Convert to musical note
     const { note } = frequencyToNote(dominantFreq);
-    const noteConfidence = maxMagnitude / 255;
 
-    // Calculate pitch class profile (chroma vector)
+    // Robust chromagram calculation
     const chroma = new Array(12).fill(0);
-    const fundamentalBin = Math.floor(dominantFreq / binSize);
+    const nyquist = sampleRate / 2;
+    const binSize = nyquist / frequencies.length;
 
-    // Add energy from harmonics
-    for (let harmonic = 1; harmonic <= 6; harmonic++) {
-      const harmonicBin = fundamentalBin * harmonic;
-      if (harmonicBin < frequencies.length) {
-        const noteNum = frequencyToNote(harmonicBin * binSize).note;
-        if (noteNum !== 'N/A') {
-          const pitchClass = NOTE_NAMES.indexOf(noteNum.slice(0, -1));
-          if (pitchClass >= 0) {
-            chroma[pitchClass] += frequencies[harmonicBin] / 255 / harmonic;
-          }
+    // Map entire spectrum to 12 pitch classes
+    for (let i = 1; i < frequencies.length; i++) {
+      const freq = i * binSize;
+      const magnitude = frequencies[i] / 255;
+
+      if (freq < 80 || freq > 4000) continue;
+
+      const noteData = frequencyToNote(freq);
+      if (noteData.note !== 'N/A') {
+        const noteName = noteData.note.slice(0, -1);
+        const pitchClass = NOTE_NAMES.indexOf(noteName);
+        if (pitchClass >= 0) {
+          const weight = A_WEIGHTING(freq);
+          chroma[pitchClass] += magnitude * weight;
         }
       }
     }
 
-    // Normalize chroma
+    // Normalize chromagram
     const chromaSum = chroma.reduce((a, b) => a + b, 0);
     if (chromaSum > 0) {
       for (let i = 0; i < 12; i++) {
@@ -344,15 +409,28 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
       }
     }
 
-    // Calculate harmonic content (ratio of harmonic energy to fundamental)
-    let harmonicEnergy = 0;
-    for (let h = 2; h <= 6; h++) {
-      const hBin = Math.floor((dominantFreq * h) / binSize);
-      if (hBin < frequencies.length) {
-        harmonicEnergy += frequencies[hBin] / 255;
+    // Calculate harmonic content
+    let harmonicContent = 0;
+    if (dominantFreq > 0) {
+      const fundamentalBin = Math.floor(dominantFreq / binSize);
+      let fundamentalEnergy = 0;
+      let harmonicEnergy = 0;
+
+      if (fundamentalBin < frequencies.length) {
+        fundamentalEnergy = frequencies[fundamentalBin] / 255;
+      }
+
+      for (let harmonic = 2; harmonic <= 6; harmonic++) {
+        const harmonicBin = Math.floor((dominantFreq * harmonic) / binSize);
+        if (harmonicBin < frequencies.length) {
+          harmonicEnergy += frequencies[harmonicBin] / 255;
+        }
+      }
+
+      if (fundamentalEnergy > 0) {
+        harmonicContent = Math.min(1, harmonicEnergy / fundamentalEnergy);
       }
     }
-    const harmonicContent = Math.min(1, harmonicEnergy / (noteConfidence * 5));
 
     return {
       dominantFrequency: dominantFreq,
@@ -363,26 +441,26 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     };
   };
 
-  // NEW: Enhanced rhythmic analysis
+  // Autocorrelation-based rhythmic analysis
   const calculateRhythmicFeatures = (spectralFlux: number, currentTime: number, isOverallTransient: boolean): RhythmicFeatures => {
-    // 1. Ajouter la valeur actuelle de l'ODF (flux) à notre historique
+    // Update ODF history
     odfHistoryRef.current.push(spectralFlux);
     if (odfHistoryRef.current.length > ODF_HISTORY_SIZE) {
       odfHistoryRef.current.shift();
     }
 
-    // 2. Appeler le nouveau détecteur avec l'historique
+    // BPM detection via autocorrelation
     const bpm = bpmDetectorRef.current.detectBPM(odfHistoryRef.current, ODF_SAMPLE_RATE);
     const confidence = bpmDetectorRef.current.getConfidence();
 
-    // Mise à jour de lastBeatTime si un transient fort est détecté (pour la phase)
-    if (isOverallTransient) { // Utiliser le transient du frame actuel pour une synchronisation parfaite
+    // Update beat timing on strong transients
+    if (isOverallTransient) {
       lastBeatTimeRef.current = currentTime;
     }
 
     const beatPhase = bpmDetectorRef.current.getBeatPhase(currentTime, bpm, lastBeatTimeRef.current);
 
-    // Detect subdivision by analyzing transient patterns
+    // Detect rhythmic subdivision
     let subdivision = 1;
     if (audioData.transients) {
       const transientCount = [
@@ -553,7 +631,7 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
 
       const bands = calculateBands(frequencies, audioContextRef.current.sampleRate);
       const spectralFeatures = calculateSpectralFeatures(frequencies, audioContextRef.current.sampleRate);
-      const melodicFeatures = calculateMelodicFeatures(frequencies, audioContextRef.current.sampleRate);
+      const melodicFeatures = calculateMelodicFeatures(waveform, frequencies, audioContextRef.current.sampleRate);
 
       const dynamicBands = {
         bass: calculateDynamicValue(bands.bass, bandEnvelopeRef.current.bass),
@@ -570,6 +648,14 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
       // On passe le flux spectral ET le transient du frame actuel pour une synchronisation parfaite
       const rhythmicFeatures = calculateRhythmicFeatures(spectralFeatures.flux, currentTime, transients.overall);
 
+      // NEW: Use TimbreAnalyzer for advanced musical analysis
+      if (!timbreAnalyzerRef.current) {
+        timbreAnalyzerRef.current = new TimbreAnalyzer();
+      }
+
+      const timbreProfile = timbreAnalyzerRef.current.analyzeTimbre(melodicFeatures, spectralFeatures);
+      const musicalContext = timbreAnalyzerRef.current.analyzeMusicalContext(melodicFeatures, timbreProfile);
+
       setAudioData(prev => ({
         ...prev,
         frequencies: frequencies.slice(),
@@ -583,6 +669,8 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
         spectralFeatures,
         melodicFeatures,
         rhythmicFeatures,
+        timbreProfile,
+        musicalContext,
         bass: dynamicBands.bass,
         mids: dynamicBands.mid,
         treble: dynamicBands.treble,

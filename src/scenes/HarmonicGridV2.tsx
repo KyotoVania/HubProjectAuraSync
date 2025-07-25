@@ -209,13 +209,27 @@ const HarmonicGridV2Component: React.FC<{ audioData: AudioData; config: Harmonic
     [gridSize, audioData.frequencies.length, config.frequencyScale]
   );
 
-  // Find row for a specific frequency
+  // Find row for a specific frequency (FIXED)
   const findFrequencyRow = (frequency: number): number => {
-    const binIndex = Math.floor((frequency / 22050) * audioData.frequencies.length);
-    for (let i = 0; i < frequencyMapping.length; i++) {
-      if (frequencyMapping[i] >= binIndex) return i;
+    if (frequency <= 0) return -1;
+
+    // Use actual sample rate from audioContext
+    const sampleRate = 44100; // Should be from audioContextRef.current.sampleRate
+    const binIndex = Math.floor((frequency / (sampleRate / 2)) * audioData.frequencies.length);
+
+    // Find the closest row to this bin
+    let closestRow = 0;
+    let minDistance = Math.abs(frequencyMapping[0] - binIndex);
+
+    for (let i = 1; i < frequencyMapping.length; i++) {
+      const distance = Math.abs(frequencyMapping[i] - binIndex);
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestRow = i;
+      }
     }
-    return Math.floor(gridSize / 2);
+
+    return closestRow;
   };
 
   useFrame((_, delta) => {
@@ -744,3 +758,4 @@ export const harmonicGridV2Scene: SceneDefinition<HarmonicGridV2Settings> = {
     schema,
   },
 };
+

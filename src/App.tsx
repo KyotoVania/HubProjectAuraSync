@@ -182,18 +182,72 @@ function App() {
           <div>Groove: {Math.round(audioData.rhythmicFeatures.groove * 100)}%</div>
         </div>
 
-        {/* Melodic Features */}
+        {/* Enhanced Melodic Features - YIN Algorithm */}
         <div style={{ marginTop: '10px', fontSize: '12px', borderBottom: '1px solid #333', paddingBottom: '10px' }}>
-          <h3 style={{ margin: '0 0 5px 0', color: '#ff88ff' }}>🎼 Melodic Analysis</h3>
-          <div>Dominant Note: <strong>{audioData.melodicFeatures.dominantNote}</strong></div>
+          <h3 style={{ margin: '0 0 5px 0', color: '#ff88ff' }}>🎼 YIN Pitch Detection</h3>
+          <div>Detected Note: <strong style={{
+            color: audioData.melodicFeatures.noteConfidence > 0.5 ? '#00ff00' : '#ffaa00'
+          }}>{audioData.melodicFeatures.dominantNote}</strong></div>
           <div>Frequency: {audioData.melodicFeatures.dominantFrequency.toFixed(1)} Hz</div>
-          <div>Note Confidence: {Math.round(audioData.melodicFeatures.noteConfidence * 100)}%</div>
-          <div>Harmonic Content: {Math.round(audioData.melodicFeatures.harmonicContent * 100)}%</div>
-          <div style={{ fontSize: '10px', marginTop: '5px' }}>
-            Chroma: {audioData.melodicFeatures.pitchClass.map((v, i) =>
-              `${['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'][i]}:${(v*100).toFixed(0)}`
-            ).join(' ')}
+          <div>YIN Confidence: <span style={{
+            color: audioData.melodicFeatures.noteConfidence > 0.7 ? '#00ff00' :
+                  audioData.melodicFeatures.noteConfidence > 0.4 ? '#ffaa00' : '#ff4444'
+          }}>{Math.round(audioData.melodicFeatures.noteConfidence * 100)}%</span></div>
+          <div>Harmonic Richness: {Math.round(audioData.melodicFeatures.harmonicContent * 100)}%</div>
+
+          {/* Enhanced Chromagram Visualization */}
+          <div style={{ marginTop: '5px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 'bold' }}>Robust Chromagram:</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '2px', fontSize: '9px' }}>
+              {audioData.melodicFeatures.pitchClass.map((v, i) => {
+                const noteName = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'][i];
+                const intensity = Math.round(v * 100);
+                const isStrong = v > 0.15;
+                return (
+                  <div key={i} style={{
+                    color: isStrong ? '#ffff00' : '#888',
+                    fontWeight: isStrong ? 'bold' : 'normal'
+                  }}>
+                    {noteName}:{intensity}
+                  </div>
+                );
+              })}
+            </div>
           </div>
+        </div>
+
+        {/* NEW: Timbre Profile */}
+        <div style={{ marginTop: '10px', fontSize: '12px', borderBottom: '1px solid #333', paddingBottom: '10px' }}>
+          <h3 style={{ margin: '0 0 5px 0', color: '#ffaa88' }}>🎨 Timbre Analysis</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px' }}>
+            <div>Brightness: {Math.round(audioData.timbreProfile.brightness * 100)}%</div>
+            <div>Warmth: {Math.round(audioData.timbreProfile.warmth * 100)}%</div>
+            <div>Richness: {Math.round(audioData.timbreProfile.richness * 100)}%</div>
+            <div>Clarity: {Math.round(audioData.timbreProfile.clarity * 100)}%</div>
+            <div>Attack: {Math.round(audioData.timbreProfile.attack * 100)}%</div>
+            <div>Complexity: {Math.round(audioData.timbreProfile.harmonicComplexity * 100)}%</div>
+          </div>
+          <div style={{ marginTop: '5px' }}>
+            Dominant Chroma: {['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'][audioData.timbreProfile.dominantChroma] || 'N/A'}
+          </div>
+        </div>
+
+        {/* NEW: Musical Context */}
+        <div style={{ marginTop: '10px', fontSize: '12px', borderBottom: '1px solid #333', paddingBottom: '10px' }}>
+          <h3 style={{ margin: '0 0 5px 0', color: '#aaffaa' }}>🎵 Musical Context</h3>
+          <div>Key: <strong>{audioData.musicalContext.key}</strong></div>
+          <div>Mode: <span style={{
+            color: audioData.musicalContext.mode === 'major' ? '#88ff88' :
+                  audioData.musicalContext.mode === 'minor' ? '#ff8888' : '#888'
+          }}>{audioData.musicalContext.mode}</span></div>
+          <div>Note Present: <span style={{ color: audioData.musicalContext.notePresent ? '#00ff00' : '#666' }}>
+            {audioData.musicalContext.notePresent ? '●' : '○'}
+          </span></div>
+          <div>Note Stability: {Math.round(audioData.musicalContext.noteStability * 100)}%</div>
+          <div>Harmonic Tension: <span style={{
+            color: audioData.musicalContext.tension > 0.7 ? '#ff4444' :
+                  audioData.musicalContext.tension > 0.4 ? '#ffaa44' : '#44ff44'
+          }}>{Math.round(audioData.musicalContext.tension * 100)}%</span></div>
         </div>
 
         {/* Spectral Features */}
