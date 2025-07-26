@@ -1,22 +1,18 @@
-import { BPMDetector } from '../utils/BPMDetector';
+import { RhythmicEngine } from './RhythmicEngine';
 import { YINPitchDetector } from '../utils/YINPitchDetector';
 import { TimbreAnalyzer } from '../utils/timbreAnalyzer';
 import type { WorkerMessage, WorkerResponse, AnalysisData } from './types';
 import type { AudioData, FrequencyBands, Transients, SpectralFeatures, MelodicFeatures, RhythmicFeatures } from '../hooks/useAudioAnalyzer';
 
 // Initialize analyzers
-const bpmDetector = new BPMDetector();
+const rhythmicEngine = new RhythmicEngine(); // NEW: Replace BPMDetector
 const yinDetector = new YINPitchDetector();
 const timbreAnalyzer = new TimbreAnalyzer();
 
 // State
-const odfHistory: number[] = [];
 const chromaSmoothing = new Array(12).fill(0);
-let lastBeatTime = 0;
 
 // Configuration
-const ODF_SAMPLE_RATE = 43;
-const ODF_HISTORY_SIZE = 256;
 const ENVELOPE_CONFIG = {
     minDecay: 0.002,
     maxDecay: 0.001,
@@ -194,11 +190,6 @@ const calculateMelodicFeatures = (
     frequencies: Uint8Array,
     sampleRate: number
 ): MelodicFeatures => {
-    // Initialize YIN detector
-    if (!yinDetector) {
-        (self as any).yinDetector = new YINPitchDetector(sampleRate, 4096, 0.15);
-    }
-
     // Convert waveform for YIN
     const float32Waveform = new Float32Array(waveform.length);
     let maxValue = 0;
@@ -332,39 +323,18 @@ const calculateMelodicFeatures = (
     };
 };
 
-const calculateRhythmicFeatures = (spectralFlux: number, currentTime: number, isOverallTransient: boolean): RhythmicFeatures => {
-    // Update ODF history
-    odfHistory.push(spectralFlux);
-    if (odfHistory.length > ODF_HISTORY_SIZE) {
-        odfHistory.shift();
-    }
+// NEW: Enhanced rhythmic features using RhythmicEngine
+const calculateRhythmicFeatures = (frequencies: Uint8Array, currentTime: number): RhythmicFeatures => {
+    // Analyze with the new rhythmic engine
+    const rhythmicOutput = rhythmicEngine.analyze(frequencies, currentTime);
 
-    // BPM detection via autocorrelation
-    const bpm = bpmDetector.detectBPM(odfHistory, ODF_SAMPLE_RATE);
-    const confidence = bpmDetector.getConfidence();
-
-    // Update beat timing on strong transients
-    if (isOverallTransient) {
-        lastBeatTime = currentTime;
-    }
-
-    const beatPhase = bpmDetector.getBeatPhase(currentTime, bpm, lastBeatTime);
-
-    // Detect rhythmic subdivision
-    let subdivision = 1;
-    if (transientState.bass.value > 0.5 || transientState.mid.value > 0.5 || transientState.treble.value > 0.5) {
-        subdivision = 2;
-        if (transientState.bass.value > 0.5 && transientState.mid.value > 0.5 && transientState.treble.value > 0.5) {
-            subdivision = 4;
-        }
-    }
-
+    // Map to existing RhythmicFeatures interface
     return {
-        bpm: Math.round(bpm * 10) / 10,
-        bpmConfidence: confidence * 100,
-        beatPhase: Math.round(beatPhase * 1000) / 1000,
-        subdivision,
-        groove: confidence * 100
+        bpm: rhythmicOutput.primaryBPM,
+        bpmConfidence: rhythmicOutput.bpmConfidence,
+        beatPhase: rhythmicOutput.beatPhase,
+        subdivision: rhythmicOutput.subdivision,
+        groove: rhythmicOutput.bpmConfidence // Use confidence as groove indicator
     };
 };
 
@@ -529,10 +499,14 @@ const analyze = (data: AnalysisData): AudioData => {
     const transients = detectTransients(bands, energy);
 
     const currentTime = performance.now() / 1000;
-    const rhythmicFeatures = calculateRhythmicFeatures(spectralFeatures.flux, currentTime, transients.overall);
+    const rhythmicFeatures = calculateRhythmicFeatures(frequencies, currentTime);
 
     const timbreProfile = timbreAnalyzer.analyzeTimbre(melodicFeatures, spectralFeatures);
     const musicalContext = timbreAnalyzer.analyzeMusicalContext(melodicFeatures, timbreProfile);
+
+    // NEW: Use rhythmic engine for beat detection
+    const rhythmicOutput = rhythmicEngine.analyze(frequencies, currentTime);
+    const beat = rhythmicOutput.isBeat;
 
     // Update prev values
     prevBands.bass = bands.bass;
@@ -556,7 +530,7 @@ const analyze = (data: AnalysisData): AudioData => {
         bass: dynamicBands.bass,
         mids: dynamicBands.mid,
         treble: dynamicBands.treble,
-        beat: transients.overall,
+        beat,
         smoothedVolume: volume,
     };
 };
