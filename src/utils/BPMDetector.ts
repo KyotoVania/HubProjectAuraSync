@@ -18,6 +18,14 @@ export class BPMDetector {
     private readonly minBPM = 70;
     private readonly maxBPM = 190;
 
+    // NEW: Store ACF and bestLag for confidence calculation
+    private lastACF: number[] | null = null;
+    private lastBestLag: number = 0;
+
+    // NEW: Ignore transient confidence drops
+    private confidenceHistory: number[] = [];
+    private readonly confidenceHistorySize = 10;
+
     // Pas besoin de garder un état interne complexe ici, la logique est plus directe.
 
     public detectBPM(odfHistory: number[], sampleRate: number): number {
@@ -28,22 +36,27 @@ export class BPMDetector {
         // 1. Calculer l'autocorrélation sur l'historique de l'ODF
         const acf = autocorrelation(odfHistory);
 
-        // 2. Définir la plage de recherche en "lags" (décalages)
-        const minLag = Math.floor(sampleRate / (this.maxBPM / 60));
-        const maxLag = Math.ceil(sampleRate / (this.minBPM / 60));
+        // 2. Définir la plage de recherche en "lags" (décalages) - FIXED calculation
+        const minLag = Math.floor(sampleRate * 60 / this.maxBPM);
+        const maxLag = Math.ceil(sampleRate * 60 / this.minBPM);
 
-        // 3. Trouver le pic de corrélation dans la plage plausible
-        let maxCorrelation = 0;
+        // 3. Trouver le pic de corrélation dans la plage plausible - IMPROVED peak detection
+        let maxCorrelation = -Infinity;
         let bestLag = 0;
-        for (let lag = minLag; lag <= maxLag; lag++) {
-            if (acf[lag] > maxCorrelation) {
-                // On s'assure que c'est un vrai pic
-                if (lag === 0 || (acf[lag] > acf[lag - 1] && acf[lag] > acf[lag + 1])) {
+
+        for (let lag = minLag; lag <= maxLag && lag < acf.length; lag++) {
+            // Vérifier que c'est un vrai pic local
+            if (lag > 0 && lag < acf.length - 1) {
+                if (acf[lag] > acf[lag - 1] && acf[lag] > acf[lag + 1] && acf[lag] > maxCorrelation) {
                     maxCorrelation = acf[lag];
                     bestLag = lag;
                 }
             }
         }
+
+        // Store ACF and bestLag for confidence calculation
+        this.lastACF = acf;
+        this.lastBestLag = bestLag;
 
         // 4. Convertir le meilleur lag en BPM
         if (bestLag > 0) {
@@ -60,6 +73,17 @@ export class BPMDetector {
         return this.getStableBPM();
     }
 
+    // NEW: Calculate peak prominence for better confidence metrics
+    private calculatePeakProminence(acf: number[], bestLag: number): number {
+        const peakValue = acf[bestLag];
+        // Trouver le 2e pic dans une fenêtre éloignée
+        let secondPeak = 0;
+        for (let lag = bestLag + 10; lag < acf.length; lag++) {
+            secondPeak = Math.max(secondPeak, acf[lag]);
+        }
+        return peakValue / (secondPeak || 1);
+    }
+
     private getStableBPM(): number {
         if (this.bpmHistory.length < 5) return 0;
 
@@ -72,9 +96,31 @@ export class BPMDetector {
 
     public getConfidence(): number {
         if (this.bpmHistory.length < 5) return 0;
+
+        // Calculate current confidence
         const mean = this.bpmHistory.reduce((a, b) => a + b, 0) / this.bpmHistory.length;
         const stdDev = Math.sqrt(this.bpmHistory.map(x => Math.pow(x - mean, 2)).reduce((a, b) => a + b, 0) / this.bpmHistory.length);
-        return Math.max(0, 1 - (stdDev / (mean * 0.08))); // Confiance si l'écart-type est faible
+        const stabilityFactor = Math.max(0, 1 - (stdDev / (mean * 0.08)));
+
+        let currentConfidence = stabilityFactor;
+
+        // Add peak prominence if available
+        if (this.lastACF && this.lastBestLag > 0) {
+            const prominence = this.calculatePeakProminence(this.lastACF, this.lastBestLag);
+            const prominenceFactor = Math.min(prominence / 3, 1);
+            currentConfidence = (prominenceFactor + stabilityFactor) / 2;
+        }
+
+        // NEW: Smooth confidence to avoid transient drops
+        this.confidenceHistory.push(currentConfidence);
+        if (this.confidenceHistory.length > this.confidenceHistorySize) {
+            this.confidenceHistory.shift();
+        }
+
+        // Return median of recent confidences
+        const sorted = [...this.confidenceHistory].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
     }
 
     // Ces fonctions restent utiles pour la synchronisation visuelle

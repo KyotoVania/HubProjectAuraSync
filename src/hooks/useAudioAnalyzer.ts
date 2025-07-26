@@ -204,8 +204,15 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
   const bpmDetectorRef = useRef(new BPMDetector());
   const odfHistoryRef = useRef<number[]>([]); // Historique de l'ODF pour l'ACF
   const lastBeatTimeRef = useRef(0);
-  const ODF_SAMPLE_RATE = 45; // On analyse le tempo à 45 Hz, suffisant et performant
+  const ODF_SAMPLE_RATE = 43; // Réduit de 45 à 43 Hz pour exactement 256 samples = 5.95 secondes
   const ODF_HISTORY_SIZE = 256; // Environ 5.6 secondes d'historique
+
+  // FIXED: Store real sample rate from AudioContext
+  const realSampleRateRef = useRef<number>(44100); // Default fallback
+
+  // NEW: Chromagram smoothing
+  const chromaSmoothingRef = useRef<number[]>(new Array(12).fill(0));
+  const CHROMA_SMOOTHING = 0.85; // Smoothing factor
 
   // --- Enhanced Analysis Functions ---
 
@@ -378,30 +385,32 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
 
     const { note } = frequencyToNote(dominantFreq);
 
-    // Robust chromagram calculation
+    // Robust chromagram calculation with temporal smoothing
     const chroma = new Array(12).fill(0);
     const nyquist = sampleRate / 2;
     const binSize = nyquist / frequencies.length;
 
-    // Map entire spectrum to 12 pitch classes
+    // Map spectrum to pitch classes with proper weighting
     for (let i = 1; i < frequencies.length; i++) {
       const freq = i * binSize;
       const magnitude = frequencies[i] / 255;
 
       if (freq < 80 || freq > 4000) continue;
 
-      const noteData = frequencyToNote(freq);
-      if (noteData.note !== 'N/A') {
-        const noteName = noteData.note.slice(0, -1);
-        const pitchClass = NOTE_NAMES.indexOf(noteName);
-        if (pitchClass >= 0) {
-          const weight = A_WEIGHTING(freq);
-          chroma[pitchClass] += magnitude * weight;
-        }
-      }
+      // Find closest MIDI note
+      const midiNote = 12 * Math.log2(freq / 440) + 69;
+      const pitchClass = ((Math.round(midiNote) % 12) + 12) % 12;
+
+      // Weight by magnitude and perceptual importance
+      const weight = magnitude * A_WEIGHTING(freq);
+
+      // Distribute energy to neighboring pitch classes for robustness
+      chroma[pitchClass] += weight * 0.7;
+      chroma[(pitchClass + 11) % 12] += weight * 0.15;
+      chroma[(pitchClass + 1) % 12] += weight * 0.15;
     }
 
-    // Normalize chromagram
+    // Normalize
     const chromaSum = chroma.reduce((a, b) => a + b, 0);
     if (chromaSum > 0) {
       for (let i = 0; i < 12; i++) {
@@ -409,26 +418,48 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
       }
     }
 
-    // Calculate harmonic content
+    // Apply temporal smoothing
+    for (let i = 0; i < 12; i++) {
+      chromaSmoothingRef.current[i] = chromaSmoothingRef.current[i] * CHROMA_SMOOTHING +
+                                       chroma[i] * (1 - CHROMA_SMOOTHING);
+      chroma[i] = chromaSmoothingRef.current[i];
+    }
+
+    // Calculate harmonic content - FIXED
     let harmonicContent = 0;
-    if (dominantFreq > 0) {
+    if (dominantFreq > 0 && frequencies.length > 0) {
       const fundamentalBin = Math.floor(dominantFreq / binSize);
       let fundamentalEnergy = 0;
       let harmonicEnergy = 0;
 
-      if (fundamentalBin < frequencies.length) {
-        fundamentalEnergy = frequencies[fundamentalBin] / 255;
+      // Get fundamental energy (average over 3 bins for robustness)
+      for (let i = -1; i <= 1; i++) {
+        const bin = fundamentalBin + i;
+        if (bin >= 0 && bin < frequencies.length) {
+          fundamentalEnergy += frequencies[bin] / 255;
+        }
       }
+      fundamentalEnergy /= 3;
 
+      // Sum harmonic energies
       for (let harmonic = 2; harmonic <= 6; harmonic++) {
         const harmonicBin = Math.floor((dominantFreq * harmonic) / binSize);
         if (harmonicBin < frequencies.length) {
-          harmonicEnergy += frequencies[harmonicBin] / 255;
+          // Average over neighboring bins
+          let energy = 0;
+          for (let i = -1; i <= 1; i++) {
+            const bin = harmonicBin + i;
+            if (bin >= 0 && bin < frequencies.length) {
+              energy += frequencies[bin] / 255;
+            }
+          }
+          harmonicEnergy += energy / 3;
         }
       }
 
-      if (fundamentalEnergy > 0) {
-        harmonicContent = Math.min(1, harmonicEnergy / fundamentalEnergy);
+      // Calculate ratio (0-1 range)
+      if (fundamentalEnergy > 0.01) {
+        harmonicContent = Math.min(1, harmonicEnergy / (fundamentalEnergy * 5));
       }
     }
 
@@ -437,7 +468,7 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
       dominantNote: note,
       noteConfidence,
       harmonicContent,
-      pitchClass: chroma
+      pitchClass: chromaSmoothingRef.current
     };
   };
 
@@ -452,6 +483,11 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     // BPM detection via autocorrelation
     const bpm = bpmDetectorRef.current.detectBPM(odfHistoryRef.current, ODF_SAMPLE_RATE);
     const confidence = bpmDetectorRef.current.getConfidence();
+
+    // Debug logging for BPM detection
+    if (bpm > 0 && confidence > 0.5) {
+      console.log(`BPM: ${bpm.toFixed(1)}, Conf: ${(confidence * 100).toFixed(0)}%`);
+    }
 
     // Update beat timing on strong transients
     if (isOverallTransient) {
@@ -555,6 +591,11 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     try {
       audioContextRef.current = new AudioContext();
       analyserRef.current = audioContextRef.current.createAnalyser();
+
+      // FIXED: Capture the real sample rate from AudioContext
+      realSampleRateRef.current = audioContextRef.current.sampleRate;
+      console.log('🎛️ AudioContext Sample Rate:', realSampleRateRef.current, 'Hz');
+
     } catch (error) {
       console.error('Failed to initialize AudioContext:', error);
       return;
@@ -629,9 +670,11 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
       }
       energy = Math.sqrt(energy / (frequencies.length - 2));
 
-      const bands = calculateBands(frequencies, audioContextRef.current.sampleRate);
-      const spectralFeatures = calculateSpectralFeatures(frequencies, audioContextRef.current.sampleRate);
-      const melodicFeatures = calculateMelodicFeatures(waveform, frequencies, audioContextRef.current.sampleRate);
+      // FIXED: Use real sample rate everywhere
+      const sampleRate = realSampleRateRef.current;
+      const bands = calculateBands(frequencies, sampleRate);
+      const spectralFeatures = calculateSpectralFeatures(frequencies, sampleRate);
+      const melodicFeatures = calculateMelodicFeatures(waveform, frequencies, sampleRate);
 
       const dynamicBands = {
         bass: calculateDynamicValue(bands.bass, bandEnvelopeRef.current.bass),
@@ -642,6 +685,11 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
       const normalizedEnergy = calculateDynamicValue(energy, energyEnvelopeRef.current);
       const dropIntensity = detectDrop(normalizedEnergy);
       const transients = detectTransients(bands, energy);
+
+      // Update YIN detector with real sample rate if needed
+      if (yinDetectorRef.current && yinDetectorRef.current.updateSampleRate) {
+        yinDetectorRef.current.updateSampleRate(sampleRate);
+      }
 
       // MODIFICATION: Appel à la nouvelle fonction rythmique avec le transient actuel
       const currentTime = performance.now() / 1000;

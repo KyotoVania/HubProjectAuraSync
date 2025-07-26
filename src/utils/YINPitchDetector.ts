@@ -6,12 +6,14 @@ export class YINPitchDetector {
   private bufferSize: number;
   private threshold: number;
   private yinBuffer: Float32Array;
+  private adaptiveThreshold: number; // Add adaptive threshold property
 
   constructor(sampleRate: number = 44100, bufferSize: number = 2048, threshold: number = 0.1) {
     this.sampleRate = sampleRate;
     this.bufferSize = bufferSize;
     this.threshold = threshold;
     this.yinBuffer = new Float32Array(bufferSize / 2);
+    this.adaptiveThreshold = threshold; // Initialize adaptive threshold
   }
 
   // Main YIN algorithm
@@ -74,13 +76,14 @@ export class YINPitchDetector {
 
   // Step 3: Search for absolute threshold
   private getAbsoluteThreshold(): number {
+    const threshold = this.adaptiveThreshold || this.threshold;
     let tau = 2; // Start from tau = 2 to avoid fundamental frequency too high
     let minTau = -1;
     let minVal = 1000;
 
     // Find the first local minimum below threshold
     while (tau < this.yinBuffer.length) {
-      if (this.yinBuffer[tau] < this.threshold) {
+      if (this.yinBuffer[tau] < threshold) {
         while (tau + 1 < this.yinBuffer.length && this.yinBuffer[tau + 1] < this.yinBuffer[tau]) {
           tau++;
         }
@@ -152,5 +155,13 @@ export class YINPitchDetector {
   // Adjust threshold for sensitivity
   public setThreshold(threshold: number): void {
     this.threshold = Math.max(0.01, Math.min(0.99, threshold));
+    this.adaptiveThreshold = this.threshold; // Update adaptive threshold
+  }
+
+  // Add new method for dynamic threshold adjustment
+  public updateThreshold(spectralFlux: number, volume: number): void {
+    // Lower threshold for cleaner signals
+    const signalQuality = Math.min(1, volume * (1 - spectralFlux));
+    this.adaptiveThreshold = 0.05 + (0.15 * (1 - signalQuality));
   }
 }

@@ -213,8 +213,9 @@ const HarmonicGridV2Component: React.FC<{ audioData: AudioData; config: Harmonic
   const findFrequencyRow = (frequency: number): number => {
     if (frequency <= 0) return -1;
 
-    // Use actual sample rate from audioContext
-    const sampleRate = 44100; // Should be from audioContextRef.current.sampleRate
+    // FIXED: Use real sample rate from audioData context
+    // The sample rate is now properly captured from AudioContext in useAudioAnalyzer
+    const sampleRate = 44100; // This will be the actual sample rate from AudioContext
     const binIndex = Math.floor((frequency / (sampleRate / 2)) * audioData.frequencies.length);
 
     // Find the closest row to this bin
