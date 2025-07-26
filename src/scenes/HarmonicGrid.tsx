@@ -289,7 +289,7 @@ const ImprovedHarmonicGridComponent: React.FC<{ audioData: AudioData; config: Ha
         </instancedMesh>
 
         {/* Add subtle fog for depth */}
-        <fog attach="fog" color="#000000" near={10} far={100} />
+        <fog attach="fog" args={["#000000", 10, 100]} color="#000000" near={10} far={100} />
       </group>
   );
 };
