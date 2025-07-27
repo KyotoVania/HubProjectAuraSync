@@ -1,4 +1,4 @@
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, useState, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { AudioData } from '../hooks/useAudioAnalyzer';
@@ -7,7 +7,7 @@ import type { GlobalSettings } from '../types/config';
 
 // 1. Define the settings interface
 interface ChainSpellSettings {
-    // Visual settings (for future audio integration)
+    // Visual settings
     animationSpeed: number;
     colorIntensity: number;
     fogDensity: number;
@@ -33,6 +33,12 @@ const fragmentShader = `
 uniform vec3 iResolution;
 uniform float iTime;
 uniform vec4 iMouse;
+uniform float cameraDistance;
+uniform float colorIntensity;
+uniform float fogDensity;
+uniform float spellCount;
+uniform float chainComplexity;
+uniform float stormIntensity;
 
 varying vec2 vUv;
 
@@ -105,8 +111,16 @@ float getWorldWave(float x) {
 
 // Camera control - using mouse position for now
 vec3 camera(vec3 p) {
-  p.yz *= rot((PI * (iMouse.y / iResolution.y - 0.5)));
-  p.xz *= rot((PI * (iMouse.x / iResolution.x - 0.5)));
+  // Use normalized mouse coordinates (-0.5 to 0.5)
+  float rotX = (iMouse.x / iResolution.x - 0.5) * PI;
+  float rotY = (iMouse.y / iResolution.y - 0.5) * PI;
+  
+  p.yz *= rot(rotY);
+  p.xz *= rot(rotX);
+  
+  // Apply camera distance (zoom)
+  p *= cameraDistance;
+  
   return p;
 }
 
@@ -162,8 +176,8 @@ float mapSpell(vec3 p) {
 float mapChain(vec3 p) {
   float scene = 1.;
   
-  // Number of chain
-  float count = 21.;
+  // Number of chain - NOW CONTROLLED BY UNIFORM
+  float count = chainComplexity;
   
   // Size of chain
   vec2 size = vec2(0.1, 0.02);
@@ -194,15 +208,16 @@ vec3 posCore(vec3 p, float count) {
 float mapCore(vec3 p) {
   float scene = 1.;
   
-  // Number of torus repeated
-  float count = 10.;
+  // Number of torus repeated - NOW CONTROLLED BY UNIFORM
+  float count = spellCount * 2.0; // Multiply by 2 for more visual complexity
   float a = p.x * 2.;
   
-  // Displace space
+  // Displace space - Storm intensity affects rotation speed
+  float stormFactor = 1.0 + stormIntensity * 2.0;
   p.xz *= rot(p.y * 6.);
-  p.xz *= rot(iTime);
-  p.xy *= rot(iTime * 0.5);
-  p.yz *= rot(iTime * 1.5);
+  p.xz *= rot(iTime * stormFactor);
+  p.xy *= rot(iTime * 0.5 * stormFactor);
+  p.yz *= rot(iTime * 1.5 * stormFactor);
   vec3 p1 = posCore(p, count);
   vec2 size = vec2(0.1, 0.2);
   
@@ -226,6 +241,8 @@ void main() {
   vec2 seed = dpos + fract(iTime);
   
   float shade = 0.;
+  float totalDistance = 0.; // Track total distance for fog
+  
   for (float i = 0.; i < STEPS; ++i) {
     // Distance from the different shapes
     float distSpell = min(mapSpell(pos), mapCore(pos));
@@ -253,26 +270,100 @@ void main() {
     
     // Raymarch
     pos += ray * dist;
+    totalDistance += dist;
   }
   
   // Color from the normalized steps
-  gl_FragColor = vec4(vec3(shade / (STEPS - 1.)), 1.0);
+  float normalizedShade = shade / (STEPS - 1.);
+  
+  // Apply color intensity
+  vec3 baseColor = vec3(normalizedShade * colorIntensity);
+  
+  // Apply fog based on distance
+  float fogAmount = 1.0 - exp(-totalDistance * fogDensity * 0.05);
+  vec3 fogColor = vec3(0.0); // Black fog
+  vec3 finalColor = mix(baseColor, fogColor, fogAmount);
+  
+  gl_FragColor = vec4(finalColor, 1.0);
 }
 `;
 
 // 2. Create the scene component
 const ChainSpellComponent: React.FC<{ audioData: AudioData; config: ChainSpellSettings; globalConfig: GlobalSettings }> = ({ audioData, config, globalConfig }) => {
     const meshRef = useRef<THREE.Mesh>(null);
-    const { size, viewport, mouse } = useThree();
+    const { size, viewport, mouse, gl } = useThree();
+
+    // Mouse drag state
+    const [isDragging, setIsDragging] = useState(false);
+    const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+    const [currentRotation, setCurrentRotation] = useState({ x: 0, y: 0 });
+    const [rotation, setRotation] = useState({ x: 0, y: 0 });
+
+    // Zoom state
+    const [zoom, setZoom] = useState(1.0);
 
     // Create shader material with uniforms
     const uniforms = useMemo(() => ({
         iTime: { value: 0 },
         iResolution: { value: new THREE.Vector3() },
         iMouse: { value: new THREE.Vector4() },
-        // Additional uniforms for future audio integration
-        animationSpeed: { value: config.animationSpeed },
-    }), [config.animationSpeed]);
+        cameraDistance: { value: config.cameraDistance },
+        colorIntensity: { value: config.colorIntensity },
+        fogDensity: { value: config.fogDensity },
+        spellCount: { value: config.spellCount },
+        chainComplexity: { value: config.chainComplexity },
+        stormIntensity: { value: config.stormIntensity },
+    }), []); // Empty dependency array to avoid recreating uniforms
+
+    // Handle mouse events
+    useEffect(() => {
+        const canvas = gl.domElement;
+
+        const handleMouseDown = (e: MouseEvent) => {
+            setIsDragging(true);
+            setDragStart({
+                x: e.clientX,
+                y: e.clientY
+            });
+            setCurrentRotation({ ...rotation });
+        };
+
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!isDragging) return;
+
+            const deltaX = e.clientX - dragStart.x;
+            const deltaY = e.clientY - dragStart.y;
+
+            // Convert pixel movement to rotation (adjust sensitivity as needed)
+            const sensitivity = 0.5;
+            setRotation({
+                x: currentRotation.x + (deltaX * sensitivity),
+                y: currentRotation.y + (deltaY * sensitivity)
+            });
+        };
+
+        const handleMouseUp = () => {
+            setIsDragging(false);
+        };
+
+        const handleWheel = (e: WheelEvent) => {
+            e.preventDefault();
+            const delta = e.deltaY * 0.001;
+            setZoom(prevZoom => Math.max(0.5, Math.min(3.0, prevZoom + delta)));
+        };
+
+        canvas.addEventListener('mousedown', handleMouseDown);
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        canvas.addEventListener('wheel', handleWheel);
+
+        return () => {
+            canvas.removeEventListener('mousedown', handleMouseDown);
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+            canvas.removeEventListener('wheel', handleWheel);
+        };
+    }, [isDragging, dragStart, currentRotation, rotation, gl.domElement]);
 
     // Update uniforms each frame
     useFrame((state) => {
@@ -285,11 +376,36 @@ const ChainSpellComponent: React.FC<{ audioData: AudioData; config: ChainSpellSe
         // Update resolution
         material.uniforms.iResolution.value.set(size.width, size.height, 1);
 
-        // Update mouse position (convert from normalized device coordinates to pixel coordinates)
-        const mouseX = (mouse.x + 1) * 0.5 * size.width;
-        const mouseY = (1 - mouse.y) * 0.5 * size.height; // Invert Y for Shadertoy compatibility
-        material.uniforms.iMouse.value.set(mouseX, mouseY, 0, 0);
+        // Update mouse position based on rotation state
+        // Convert rotation to normalized coordinates for the shader
+        const normalizedX = (rotation.x / size.width) % 1;
+        const normalizedY = (rotation.y / size.height) % 1;
+
+        material.uniforms.iMouse.value.set(
+            normalizedX * size.width + size.width * 0.5,
+            normalizedY * size.height + size.height * 0.5,
+            0,
+            0
+        );
+
+        // Update camera distance with zoom
+        material.uniforms.cameraDistance.value = config.cameraDistance * zoom;
+
+        // Update all other uniforms from config
+        material.uniforms.colorIntensity.value = config.colorIntensity;
+        material.uniforms.fogDensity.value = config.fogDensity;
+        material.uniforms.spellCount.value = config.spellCount;
+        material.uniforms.chainComplexity.value = config.chainComplexity;
+        material.uniforms.stormIntensity.value = config.stormIntensity;
     });
+
+    // Change cursor on drag
+    useEffect(() => {
+        document.body.style.cursor = isDragging ? 'grabbing' : 'grab';
+        return () => {
+            document.body.style.cursor = 'auto';
+        };
+    }, [isDragging]);
 
     // Create a fullscreen quad using viewport dimensions
     return (
@@ -310,11 +426,11 @@ const ChainSpellComponent: React.FC<{ audioData: AudioData; config: ChainSpellSe
 const schema: SceneSettingsSchema = {
     animationSpeed: { type: 'slider', label: 'Animation Speed', min: 0.1, max: 3, step: 0.1 },
     colorIntensity: { type: 'slider', label: 'Color Intensity', min: 0.5, max: 2, step: 0.1 },
-    fogDensity: { type: 'slider', label: 'Fog Density', min: 0, max: 1, step: 0.05 },
+    fogDensity: { type: 'slider', label: 'Fog Density', min: 0, max: 2, step: 0.1 },
     cameraDistance: { type: 'slider', label: 'Camera Distance', min: 0.5, max: 3, step: 0.1 },
-    spellCount: { type: 'slider', label: 'Spell Count', min: 1, max: 5, step: 1 },
+    spellCount: { type: 'slider', label: 'Spell Count', min: 1, max: 10, step: 1 },
     chainComplexity: { type: 'slider', label: 'Chain Complexity', min: 10, max: 30, step: 1 },
-    stormIntensity: { type: 'slider', label: 'Storm Intensity', min: 0, max: 1, step: 0.05 },
+    stormIntensity: { type: 'slider', label: 'Storm Intensity', min: 0, max: 2, step: 0.1 },
 };
 
 export const chainSpellScene: SceneDefinition<ChainSpellSettings> = {
@@ -327,7 +443,7 @@ export const chainSpellScene: SceneDefinition<ChainSpellSettings> = {
             colorIntensity: 1.0,
             fogDensity: 0.5,
             cameraDistance: 1.5,
-            spellCount: 3,
+            spellCount: 5,
             chainComplexity: 21,
             stormIntensity: 0.7,
         },

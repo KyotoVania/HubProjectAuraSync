@@ -346,3 +346,4 @@ export const improvedHarmonicGridScene: SceneDefinition<HarmonicGridSettings> = 
   },
 };
 export default improvedHarmonicGridScene;
+
