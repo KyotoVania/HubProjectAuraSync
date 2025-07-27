@@ -2,15 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { BPMDetector } from '../utils/BPMDetector';
 import { YINPitchDetector } from '../utils/YINPitchDetector';
 import { TimbreAnalyzer, type TimbreProfile, type MusicalContext } from '../utils/timbreAnalyzer';
+import { createMelFilterbank, calculateRobustODF, calculateMedian } from '../utils/melFilterbank';
 
-// Helper pour calculer la médiane d'un tableau de nombres
-const calculateMedian = (arr: number[]): number => {
-  if (arr.length === 0) return 0;
-  const sorted = [...arr].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-};
-
+// --- Type Definitions ---
 export interface FrequencyBands {
   bass: number; // 20-250 Hz
   mid: number; // 250-4000 Hz
@@ -51,18 +45,16 @@ export interface AudioData {
   frequencies: Uint8Array;
   waveform: Uint8Array;
   volume: number;
-  bands: FrequencyBands; // Raw energy values
-  dynamicBands: FrequencyBands; // Normalized values (0-1) based on recent history
+  bands: FrequencyBands;
+  dynamicBands: FrequencyBands;
   transients: Transients;
   energy: number;
-  dropIntensity: number; // 0-1 value representing the power of a recent drop
+  dropIntensity: number;
   spectralFeatures: SpectralFeatures;
   melodicFeatures: MelodicFeatures;
   rhythmicFeatures: RhythmicFeatures;
-  // NEW: Advanced timbre and musical analysis
   timbreProfile: TimbreProfile;
   musicalContext: MusicalContext;
-  // Legacy compatibility
   bass: number;
   mids: number;
   treble: number;
@@ -214,6 +206,11 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
   const chromaSmoothingRef = useRef<number[]>(new Array(12).fill(0));
   const CHROMA_SMOOTHING = 0.85; // Smoothing factor
 
+  // NEW: Mel filterbank for robust ODF
+  const melFilterbankRef = useRef<number[][] | null>(null);
+  const prevMelEnergiesRef = useRef<Float32Array | null>(null);
+  const MEL_BANDS = 40; // Number of Mel bands for ODF calculation
+
   // --- Enhanced Analysis Functions ---
 
   const calculateBands = (frequencies: Uint8Array, sampleRate: number): FrequencyBands => {
@@ -259,26 +256,22 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     let totalEnergy = 0;
     let centroidSum = 0;
 
-    // Onset Detection Function (ODF) basée sur le flux spectral médian
-    const spectralChanges: number[] = [];
+    // NEW: Initialize Mel filterbank if not already done
+    if (!melFilterbankRef.current) {
+      melFilterbankRef.current = createMelFilterbank(frequencies.length * 2, MEL_BANDS, sampleRate);
+      prevMelEnergiesRef.current = new Float32Array(MEL_BANDS).fill(0);
+      console.log('🎵 Mel Filterbank initialized with', MEL_BANDS, 'bands for robust ODF');
+    }
 
+    // Calculate spectral centroid, spread, and rolloff
     for (let i = 1; i < frequencies.length - 1; i++) {
       const magnitude = frequencies[i] / 255;
       const freq = i * binSize;
 
       totalEnergy += magnitude;
       centroidSum += magnitude * freq;
-
-      const prevMag = prevFrequenciesRef.current[i];
-      const change = magnitude - prevMag;
-
-      // Redressement demi-onde : changements positifs uniquement
-      if (change > 0) {
-        spectralChanges.push(change);
-      }
     }
 
-    const flux = calculateMedian(spectralChanges);
     const centroid = totalEnergy > 0 ? (centroidSum / totalEnergy) / nyquist : 0;
 
     let cumulativeEnergy = 0;
@@ -302,7 +295,30 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     }
     const spread = totalEnergy > 0 ? Math.sqrt(spreadSum / totalEnergy) / nyquist : 0;
 
-    // Mise à jour de l'historique des fréquences
+    // NEW: Calculate robust multi-band ODF instead of simple spectral flux
+    let flux = 0;
+    if (melFilterbankRef.current && prevMelEnergiesRef.current) {
+      flux = calculateRobustODF(
+        frequencies,
+        prevMelEnergiesRef.current,
+        melFilterbankRef.current,
+        MEL_BANDS
+      );
+    } else {
+      // Fallback to old method if filterbank not ready
+      const spectralChanges: number[] = [];
+      for (let i = 1; i < frequencies.length - 1; i++) {
+        const magnitude = frequencies[i] / 255;
+        const prevMag = prevFrequenciesRef.current[i];
+        const change = magnitude - prevMag;
+        if (change > 0) {
+          spectralChanges.push(change);
+        }
+      }
+      flux = calculateMedian(spectralChanges);
+    }
+
+    // Update frequency history for potential fallback
     for (let i = 0; i < frequencies.length; i++) {
       prevFrequenciesRef.current[i] = frequencies[i] / 255;
     }
@@ -310,7 +326,7 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     return {
       centroid: Math.min(1, centroid),
       spread: Math.min(1, spread),
-      flux: Math.min(1, flux * 10),
+      flux: Math.min(1, flux * 10), // Scale for better dynamic range
       rolloff: Math.min(1, rolloff),
     };
   };

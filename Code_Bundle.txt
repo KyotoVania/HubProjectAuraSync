@@ -12,7 +12,7 @@ function App() {
   const audioData = useAudioAnalyzer(audioRef.current || undefined)
   const { global: globalConfig } = useConfigStore()
   const currentUrlRef = useRef<string | null>(null)
-  
+
   // Add logging for BPM detection and harmony analysis
   useEffect(() => {
     if (audioData.rhythmicFeatures.bpm > 0) {
@@ -56,7 +56,7 @@ function App() {
       if (currentUrlRef.current) {
         URL.revokeObjectURL(currentUrlRef.current)
       }
-      
+
       const url = URL.createObjectURL(file)
       currentUrlRef.current = url
       audioRef.current.src = url
@@ -83,15 +83,15 @@ function App() {
         gl={{ antialias: true }}
       >
         <color attach="background" args={[globalConfig.bgColor]} />
-        
+
         <Suspense fallback={null}>
           <ambientLight intensity={0.5} />
           <pointLight position={[10, 10, 10]} />
-          
+
           <VisualizationRenderer audioData={audioData} />
-          
-          <OrbitControls 
-            enableDamping 
+
+          <OrbitControls
+            enableDamping
             dampingFactor={0.05}
             enableZoom={true}
             enablePan={false}
@@ -102,7 +102,7 @@ function App() {
           <Stats />
         </Suspense>
       </Canvas>
-      
+
       <div style={{
         position: 'absolute',
         top: '20px',
@@ -175,12 +175,12 @@ function App() {
           <h3 style={{ margin: '0 0 5px 0', color: '#8888ff' }}>🥁 Rhythm Analysis</h3>
           <div>BPM: <strong>{audioData.rhythmicFeatures.bpm.toFixed(1)}</strong>
             <span style={{ color: audioData.rhythmicFeatures.bpmConfidence > 0.5 ? '#00ff00' : '#ff8800' }}>
-              ({Math.round(audioData.rhythmicFeatures.bpmConfidence * 100)}% confidence)
+              ({Math.round(audioData.rhythmicFeatures.bpmConfidence)}% confidence)
             </span>
           </div>
           <div>Beat Phase: {audioData.rhythmicFeatures.beatPhase.toFixed(3)}</div>
           <div>Subdivision: {audioData.rhythmicFeatures.subdivision}</div>
-          <div>Groove: {Math.round(audioData.rhythmicFeatures.groove * 100)}%</div>
+          <div>Groove: {Math.round(audioData.rhythmicFeatures.groove)}%</div>
         </div>
 
         {/* Enhanced Melodic Features - YIN Algorithm */}
@@ -263,7 +263,7 @@ function App() {
           </div>
         </div>
       </div>
-      
+
       <ConfigPanel />
     </div>
   )
@@ -493,378 +493,22 @@ export function ConfigPanel() {
 }
 
 --- glsl\raymarching.glsl ---
-// Ray Marching Engine
-// Technique de rendu par ray marching pour SDF
 
-#define MAX_STEPS 100
-#define MAX_DIST 100.0
-#define MIN_DIST 0.001
-
-// Ray marching algorithm
-float rayMarch(vec3 ro, vec3 rd, float minDist, float maxDist) {
-    float dO = 0.0; // Distance from origin
-    
-    for (int i = 0; i < MAX_STEPS; i++) {
-        vec3 p = ro + rd * dO; // Current position along ray
-        float dS = sceneSDF(p);  // Distance to scene (to be defined per scene)
-        dO += dS;
-        
-        if (dO > maxDist || abs(dS) < minDist) break;
-    }
-    
-    return dO;
-}
-
-// Calculate normal using gradient
-vec3 calcNormal(vec3 p) {
-    const float h = 0.0001;
-    const vec2 k = vec2(1, -1);
-    return normalize(
-        k.xyy * sceneSDF(p + k.xyy * h) +
-        k.yyx * sceneSDF(p + k.yyx * h) +
-        k.yxy * sceneSDF(p + k.yxy * h) +
-        k.xxx * sceneSDF(p + k.xxx * h)
-    );
-}
-
-// Soft shadows
-float calcSoftshadow(vec3 ro, vec3 rd, float mint, float tmax, float k) {
-    float res = 1.0;
-    float t = mint;
-    
-    for (int i = 0; i < 50; i++) {
-        float h = sceneSDF(ro + rd * t);
-        if (h < 0.001) return 0.0;
-        res = min(res, k * h / t);
-        t += h;
-        if (t >= tmax) break;
-    }
-    
-    return res;
-}
-
-// Ambient occlusion
-float calcAO(vec3 pos, vec3 nor) {
-    float occ = 0.0;
-    float sca = 1.0;
-    
-    for (int i = 0; i < 5; i++) {
-        float h = 0.01 + 0.12 * float(i) / 4.0;
-        float d = sceneSDF(pos + h * nor);
-        occ += (h - d) * sca;
-        sca *= 0.95;
-        if (occ > 0.35) break;
-    }
-    
-    return clamp(1.0 - 3.0 * occ, 0.0, 1.0) * (0.5 + 0.5 * nor.y);
-}
-
-// Camera setup
-mat3 setCamera(vec3 ro, vec3 ta, float cr) {
-    vec3 cw = normalize(ta - ro);
-    vec3 cp = vec3(sin(cr), cos(cr), 0.0);
-    vec3 cu = normalize(cross(cw, cp));
-    vec3 cv = cross(cu, cw);
-    return mat3(cu, cv, cw);
-}
 
 --- glsl\sdf.glsl ---
-// Signed Distance Field Functions
-// Référence: Iñigo Quílez - https://iquilezles.org/www/articles/distfunctions/distfunctions.htm
 
-#define PI 3.14159265359
-#define TAU 6.28318530718
-
-// Basic SDF primitives
-float sdSphere(vec3 p, float r) {
-    return length(p) - r;
-}
-
-float sdBox(vec3 p, vec3 b) {
-    vec3 q = abs(p) - b;
-    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
-}
-
-float sdTorus(vec3 p, vec2 t) {
-    vec2 q = vec2(length(p.xz) - t.x, p.y);
-    return length(q) - t.y;
-}
-
-float sdCylinder(vec3 p, vec3 c) {
-    return length(p.xz - c.xy) - c.z;
-}
-
-// SDF operations
-float opUnion(float d1, float d2) {
-    return min(d1, d2);
-}
-
-float opSubtraction(float d1, float d2) {
-    return max(-d1, d2);
-}
-
-float opIntersection(float d1, float d2) {
-    return max(d1, d2);
-}
-
-float opSmoothUnion(float d1, float d2, float k) {
-    float h = clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0);
-    return mix(d2, d1, h) - k * h * (1.0 - h);
-}
-
-// Transformations
-vec3 opRep(vec3 p, vec3 c) {
-    return mod(p + 0.5 * c, c) - 0.5 * c;
-}
-
-vec3 opTwist(vec3 p, float k) {
-    float c = cos(k * p.y);
-    float s = sin(k * p.y);
-    mat2 m = mat2(c, -s, s, c);
-    return vec3(m * p.xz, p.y);
-}
-
-// Noise functions for complex shapes
-float hash(float n) {
-    return fract(sin(n) * 43758.5453123);
-}
-
-float noise(vec3 x) {
-    vec3 p = floor(x);
-    vec3 f = fract(x);
-    f = f * f * (3.0 - 2.0 * f);
-    
-    float n = p.x + p.y * 57.0 + 113.0 * p.z;
-    return mix(
-        mix(mix(hash(n + 0.0), hash(n + 1.0), f.x),
-            mix(hash(n + 57.0), hash(n + 58.0), f.x), f.y),
-        mix(mix(hash(n + 113.0), hash(n + 114.0), f.x),
-            mix(hash(n + 170.0), hash(n + 171.0), f.x), f.y), f.z);
-}
-
-float fbm(vec3 p) {
-    float f = 0.0;
-    f += 0.50000 * noise(p); p *= 2.02;
-    f += 0.25000 * noise(p); p *= 2.03;
-    f += 0.12500 * noise(p); p *= 2.01;
-    f += 0.06250 * noise(p);
-    return f;
-}
 
 --- glsl\tunnelSDF.glsl ---
-// Tunnel SDF - Infinite tunnel with audio-reactive deformations
-// Style demo-scene avec ray marching
 
-uniform float uTime;
-uniform float uAudioBass;
-uniform float uAudioMid;
-uniform float uAudioTreble;
-uniform float uAudioVolume;
-uniform bool uAudioBeat;
-uniform vec2 uResolution;
-
-varying vec2 vUv;
-
-#define PI 3.14159265359
-#define TAU 6.28318530718
-#define MAX_STEPS 80
-#define MAX_DIST 50.0
-#define MIN_DIST 0.001
-
-// Hash function for noise
-float hash(float n) {
-    return fract(sin(n) * 43758.5453123);
-}
-
-// 3D noise
-float noise(vec3 x) {
-    vec3 p = floor(x);
-    vec3 f = fract(x);
-    f = f * f * (3.0 - 2.0 * f);
-    
-    float n = p.x + p.y * 57.0 + 113.0 * p.z;
-    return mix(
-        mix(mix(hash(n + 0.0), hash(n + 1.0), f.x),
-            mix(hash(n + 57.0), hash(n + 58.0), f.x), f.y),
-        mix(mix(hash(n + 113.0), hash(n + 114.0), f.x),
-            mix(hash(n + 170.0), hash(n + 171.0), f.x), f.y), f.z);
-}
-
-// Fractal noise
-float fbm(vec3 p) {
-    float f = 0.0;
-    f += 0.50000 * noise(p); p *= 2.02;
-    f += 0.25000 * noise(p); p *= 2.03;
-    f += 0.12500 * noise(p); p *= 2.01;
-    f += 0.06250 * noise(p);
-    return f;
-}
-
-// Audio-reactive tunnel deformation
-float tunnelDeform(vec3 p) {
-    float beat = uAudioBeat ? 1.0 : 0.0;
-    float bassWave = sin(p.z * 0.5 + uTime * 2.0) * uAudioBass * 0.3;
-    float midRipple = sin(p.z * 1.5 + uTime * 3.0) * uAudioMid * 0.2;
-    float trebleNoise = noise(p * 2.0 + uTime) * uAudioTreble * 0.15;
-    float beatPulse = beat * sin(p.z * 0.3) * 0.4;
-    
-    return bassWave + midRipple + trebleNoise + beatPulse;
-}
-
-// Main tunnel SDF
-float sceneSDF(vec3 p) {
-    // Move along Z axis for infinite tunnel
-    p.z = mod(p.z + uTime * 8.0, 16.0) - 8.0;
-    
-    // Base tunnel radius with audio deformation
-    float radius = 2.5 + tunnelDeform(p);
-    
-    // Cylinder distance (tunnel)
-    float tunnel = length(p.xy) - radius;
-    
-    // Add ribs/structure
-    float ribSpacing = 1.0;
-    float ribs = abs(mod(p.z, ribSpacing) - ribSpacing * 0.5) - 0.05;
-    ribs = max(ribs, tunnel + 0.1);
-    
-    // Audio-reactive pillars
-    float pillarAngle = atan(p.y, p.x);
-    float pillarCount = 8.0;
-    pillarAngle = mod(pillarAngle + PI/pillarCount, TAU/pillarCount) - PI/pillarCount;
-    vec2 pillarPos = vec2(sin(pillarAngle), cos(pillarAngle)) * (radius - 0.3);
-    float pillars = length(p.xy - pillarPos) - (0.2 + uAudioVolume * 0.3);
-    
-    // Combine tunnel with structures
-    float scene = tunnel;
-    scene = min(scene, ribs);
-    scene = min(scene, pillars);
-    
-    // Add noise detail
-    scene += noise(p * 4.0) * 0.02;
-    
-    return scene;
-}
-
-// Ray marching
-float rayMarch(vec3 ro, vec3 rd) {
-    float dO = 0.0;
-    
-    for (int i = 0; i < MAX_STEPS; i++) {
-        vec3 p = ro + rd * dO;
-        float dS = sceneSDF(p);
-        dO += dS;
-        
-        if (dO > MAX_DIST || abs(dS) < MIN_DIST) break;
-    }
-    
-    return dO;
-}
-
-// Calculate normal
-vec3 calcNormal(vec3 p) {
-    const float h = 0.0001;
-    const vec2 k = vec2(1, -1);
-    return normalize(
-        k.xyy * sceneSDF(p + k.xyy * h) +
-        k.yyx * sceneSDF(p + k.yyx * h) +
-        k.yxy * sceneSDF(p + k.yxy * h) +
-        k.xxx * sceneSDF(p + k.xxx * h)
-    );
-}
-
-// Camera setup
-mat3 setCamera(vec3 ro, vec3 ta, float cr) {
-    vec3 cw = normalize(ta - ro);
-    vec3 cp = vec3(sin(cr), cos(cr), 0.0);
-    vec3 cu = normalize(cross(cw, cp));
-    vec3 cv = cross(cu, cw);
-    return mat3(cu, cv, cw);
-}
-
-void main() {
-    vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution.xy) / uResolution.y;
-    
-    // Camera animation
-    float cameraSpeed = 1.0 + uAudioVolume * 2.0;
-    vec3 ro = vec3(0.0, 0.0, uTime * cameraSpeed);
-    
-    // Add camera shake on beat
-    if (uAudioBeat) {
-        ro.xy += (noise(vec3(uTime * 10.0)) - 0.5) * 0.1;
-    }
-    
-    vec3 ta = ro + vec3(0.0, 0.0, 1.0);
-    mat3 ca = setCamera(ro, ta, 0.0);
-    
-    // Ray direction
-    vec3 rd = ca * normalize(vec3(uv, 2.0));
-    
-    // Ray marching
-    float t = rayMarch(ro, rd);
-    
-    vec3 col = vec3(0.0);
-    
-    if (t < MAX_DIST) {
-        vec3 pos = ro + rd * t;
-        vec3 nor = calcNormal(pos);
-        
-        // Audio-reactive lighting
-        vec3 lightPos = ro + vec3(sin(uTime), cos(uTime), 0.0) * 2.0;
-        vec3 lightDir = normalize(lightPos - pos);
-        
-        // Diffuse lighting
-        float diff = clamp(dot(nor, lightDir), 0.0, 1.0);
-        
-        // Audio-reactive colors
-        vec3 baseColor = vec3(0.2, 0.3, 0.8);
-        baseColor.r += uAudioBass * 0.5;
-        baseColor.g += uAudioMid * 0.3;
-        baseColor.b += uAudioTreble * 0.7;
-        
-        // Distance-based color gradient
-        float distFactor = 1.0 - t / MAX_DIST;
-        baseColor *= distFactor;
-        
-        // Final color
-        col = baseColor * diff;
-        
-        // Add some ambient
-        col += baseColor * 0.2;
-        
-        // Beat flash
-        if (uAudioBeat) {
-            col += vec3(1.0, 0.8, 0.4) * 0.3;
-        }
-        
-        // Fresnel-like effect
-        float fresnel = pow(1.0 - dot(nor, -rd), 3.0);
-        col += fresnel * vec3(0.1, 0.4, 0.8) * uAudioVolume;
-    } else {
-        // Background with audio-reactive color
-        col = mix(vec3(0.05, 0.05, 0.15), vec3(0.2, 0.1, 0.3), uAudioVolume);
-    }
-    
-    // Tone mapping
-    col = col / (col + vec3(1.0));
-    col = pow(col, vec2(1.0/2.2).xxx);
-    
-    gl_FragColor = vec4(col, 1.0);
-}
 
 --- hooks\useAudioAnalyzer.ts ---
 import { useEffect, useRef, useState } from 'react';
 import { BPMDetector } from '../utils/BPMDetector';
 import { YINPitchDetector } from '../utils/YINPitchDetector';
 import { TimbreAnalyzer, type TimbreProfile, type MusicalContext } from '../utils/timbreAnalyzer';
+import { createMelFilterbank, calculateRobustODF, calculateMedian } from '../utils/melFilterbank';
 
-// Helper pour calculer la médiane d'un tableau de nombres
-const calculateMedian = (arr: number[]): number => {
-  if (arr.length === 0) return 0;
-  const sorted = [...arr].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-};
-
+// --- Type Definitions ---
 export interface FrequencyBands {
   bass: number; // 20-250 Hz
   mid: number; // 250-4000 Hz
@@ -905,18 +549,16 @@ export interface AudioData {
   frequencies: Uint8Array;
   waveform: Uint8Array;
   volume: number;
-  bands: FrequencyBands; // Raw energy values
-  dynamicBands: FrequencyBands; // Normalized values (0-1) based on recent history
+  bands: FrequencyBands;
+  dynamicBands: FrequencyBands;
   transients: Transients;
   energy: number;
-  dropIntensity: number; // 0-1 value representing the power of a recent drop
+  dropIntensity: number;
   spectralFeatures: SpectralFeatures;
   melodicFeatures: MelodicFeatures;
   rhythmicFeatures: RhythmicFeatures;
-  // NEW: Advanced timbre and musical analysis
   timbreProfile: TimbreProfile;
   musicalContext: MusicalContext;
-  // Legacy compatibility
   bass: number;
   mids: number;
   treble: number;
@@ -1058,8 +700,20 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
   const bpmDetectorRef = useRef(new BPMDetector());
   const odfHistoryRef = useRef<number[]>([]); // Historique de l'ODF pour l'ACF
   const lastBeatTimeRef = useRef(0);
-  const ODF_SAMPLE_RATE = 45; // On analyse le tempo à 45 Hz, suffisant et performant
+  const ODF_SAMPLE_RATE = 43; // Réduit de 45 à 43 Hz pour exactement 256 samples = 5.95 secondes
   const ODF_HISTORY_SIZE = 256; // Environ 5.6 secondes d'historique
+
+  // FIXED: Store real sample rate from AudioContext
+  const realSampleRateRef = useRef<number>(44100); // Default fallback
+
+  // NEW: Chromagram smoothing
+  const chromaSmoothingRef = useRef<number[]>(new Array(12).fill(0));
+  const CHROMA_SMOOTHING = 0.85; // Smoothing factor
+
+  // NEW: Mel filterbank for robust ODF
+  const melFilterbankRef = useRef<number[][] | null>(null);
+  const prevMelEnergiesRef = useRef<Float32Array | null>(null);
+  const MEL_BANDS = 40; // Number of Mel bands for ODF calculation
 
   // --- Enhanced Analysis Functions ---
 
@@ -1106,26 +760,22 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     let totalEnergy = 0;
     let centroidSum = 0;
 
-    // Onset Detection Function (ODF) basée sur le flux spectral médian
-    const spectralChanges: number[] = [];
+    // NEW: Initialize Mel filterbank if not already done
+    if (!melFilterbankRef.current) {
+      melFilterbankRef.current = createMelFilterbank(frequencies.length * 2, MEL_BANDS, sampleRate);
+      prevMelEnergiesRef.current = new Float32Array(MEL_BANDS).fill(0);
+      console.log('🎵 Mel Filterbank initialized with', MEL_BANDS, 'bands for robust ODF');
+    }
 
+    // Calculate spectral centroid, spread, and rolloff
     for (let i = 1; i < frequencies.length - 1; i++) {
       const magnitude = frequencies[i] / 255;
       const freq = i * binSize;
 
       totalEnergy += magnitude;
       centroidSum += magnitude * freq;
-
-      const prevMag = prevFrequenciesRef.current[i];
-      const change = magnitude - prevMag;
-
-      // Redressement demi-onde : changements positifs uniquement
-      if (change > 0) {
-        spectralChanges.push(change);
-      }
     }
 
-    const flux = calculateMedian(spectralChanges);
     const centroid = totalEnergy > 0 ? (centroidSum / totalEnergy) / nyquist : 0;
 
     let cumulativeEnergy = 0;
@@ -1149,7 +799,30 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     }
     const spread = totalEnergy > 0 ? Math.sqrt(spreadSum / totalEnergy) / nyquist : 0;
 
-    // Mise à jour de l'historique des fréquences
+    // NEW: Calculate robust multi-band ODF instead of simple spectral flux
+    let flux = 0;
+    if (melFilterbankRef.current && prevMelEnergiesRef.current) {
+      flux = calculateRobustODF(
+        frequencies,
+        prevMelEnergiesRef.current,
+        melFilterbankRef.current,
+        MEL_BANDS
+      );
+    } else {
+      // Fallback to old method if filterbank not ready
+      const spectralChanges: number[] = [];
+      for (let i = 1; i < frequencies.length - 1; i++) {
+        const magnitude = frequencies[i] / 255;
+        const prevMag = prevFrequenciesRef.current[i];
+        const change = magnitude - prevMag;
+        if (change > 0) {
+          spectralChanges.push(change);
+        }
+      }
+      flux = calculateMedian(spectralChanges);
+    }
+
+    // Update frequency history for potential fallback
     for (let i = 0; i < frequencies.length; i++) {
       prevFrequenciesRef.current[i] = frequencies[i] / 255;
     }
@@ -1157,7 +830,7 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     return {
       centroid: Math.min(1, centroid),
       spread: Math.min(1, spread),
-      flux: Math.min(1, flux * 10),
+      flux: Math.min(1, flux * 10), // Scale for better dynamic range
       rolloff: Math.min(1, rolloff),
     };
   };
@@ -1232,30 +905,32 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
 
     const { note } = frequencyToNote(dominantFreq);
 
-    // Robust chromagram calculation
+    // Robust chromagram calculation with temporal smoothing
     const chroma = new Array(12).fill(0);
     const nyquist = sampleRate / 2;
     const binSize = nyquist / frequencies.length;
 
-    // Map entire spectrum to 12 pitch classes
+    // Map spectrum to pitch classes with proper weighting
     for (let i = 1; i < frequencies.length; i++) {
       const freq = i * binSize;
       const magnitude = frequencies[i] / 255;
 
       if (freq < 80 || freq > 4000) continue;
 
-      const noteData = frequencyToNote(freq);
-      if (noteData.note !== 'N/A') {
-        const noteName = noteData.note.slice(0, -1);
-        const pitchClass = NOTE_NAMES.indexOf(noteName);
-        if (pitchClass >= 0) {
-          const weight = A_WEIGHTING(freq);
-          chroma[pitchClass] += magnitude * weight;
-        }
-      }
+      // Find closest MIDI note
+      const midiNote = 12 * Math.log2(freq / 440) + 69;
+      const pitchClass = ((Math.round(midiNote) % 12) + 12) % 12;
+
+      // Weight by magnitude and perceptual importance
+      const weight = magnitude * A_WEIGHTING(freq);
+
+      // Distribute energy to neighboring pitch classes for robustness
+      chroma[pitchClass] += weight * 0.7;
+      chroma[(pitchClass + 11) % 12] += weight * 0.15;
+      chroma[(pitchClass + 1) % 12] += weight * 0.15;
     }
 
-    // Normalize chromagram
+    // Normalize
     const chromaSum = chroma.reduce((a, b) => a + b, 0);
     if (chromaSum > 0) {
       for (let i = 0; i < 12; i++) {
@@ -1263,26 +938,48 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
       }
     }
 
-    // Calculate harmonic content
+    // Apply temporal smoothing
+    for (let i = 0; i < 12; i++) {
+      chromaSmoothingRef.current[i] = chromaSmoothingRef.current[i] * CHROMA_SMOOTHING +
+                                       chroma[i] * (1 - CHROMA_SMOOTHING);
+      chroma[i] = chromaSmoothingRef.current[i];
+    }
+
+    // Calculate harmonic content - FIXED
     let harmonicContent = 0;
-    if (dominantFreq > 0) {
+    if (dominantFreq > 0 && frequencies.length > 0) {
       const fundamentalBin = Math.floor(dominantFreq / binSize);
       let fundamentalEnergy = 0;
       let harmonicEnergy = 0;
 
-      if (fundamentalBin < frequencies.length) {
-        fundamentalEnergy = frequencies[fundamentalBin] / 255;
+      // Get fundamental energy (average over 3 bins for robustness)
+      for (let i = -1; i <= 1; i++) {
+        const bin = fundamentalBin + i;
+        if (bin >= 0 && bin < frequencies.length) {
+          fundamentalEnergy += frequencies[bin] / 255;
+        }
       }
+      fundamentalEnergy /= 3;
 
+      // Sum harmonic energies
       for (let harmonic = 2; harmonic <= 6; harmonic++) {
         const harmonicBin = Math.floor((dominantFreq * harmonic) / binSize);
         if (harmonicBin < frequencies.length) {
-          harmonicEnergy += frequencies[harmonicBin] / 255;
+          // Average over neighboring bins
+          let energy = 0;
+          for (let i = -1; i <= 1; i++) {
+            const bin = harmonicBin + i;
+            if (bin >= 0 && bin < frequencies.length) {
+              energy += frequencies[bin] / 255;
+            }
+          }
+          harmonicEnergy += energy / 3;
         }
       }
 
-      if (fundamentalEnergy > 0) {
-        harmonicContent = Math.min(1, harmonicEnergy / fundamentalEnergy);
+      // Calculate ratio (0-1 range)
+      if (fundamentalEnergy > 0.01) {
+        harmonicContent = Math.min(1, harmonicEnergy / (fundamentalEnergy * 5));
       }
     }
 
@@ -1291,7 +988,7 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
       dominantNote: note,
       noteConfidence,
       harmonicContent,
-      pitchClass: chroma
+      pitchClass: chromaSmoothingRef.current
     };
   };
 
@@ -1306,6 +1003,11 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     // BPM detection via autocorrelation
     const bpm = bpmDetectorRef.current.detectBPM(odfHistoryRef.current, ODF_SAMPLE_RATE);
     const confidence = bpmDetectorRef.current.getConfidence();
+
+    // Debug logging for BPM detection
+    if (bpm > 0 && confidence > 0.5) {
+      console.log(`BPM: ${bpm.toFixed(1)}, Conf: ${(confidence * 100).toFixed(0)}%`);
+    }
 
     // Update beat timing on strong transients
     if (isOverallTransient) {
@@ -1409,6 +1111,11 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     try {
       audioContextRef.current = new AudioContext();
       analyserRef.current = audioContextRef.current.createAnalyser();
+
+      // FIXED: Capture the real sample rate from AudioContext
+      realSampleRateRef.current = audioContextRef.current.sampleRate;
+      console.log('🎛️ AudioContext Sample Rate:', realSampleRateRef.current, 'Hz');
+
     } catch (error) {
       console.error('Failed to initialize AudioContext:', error);
       return;
@@ -1483,9 +1190,11 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
       }
       energy = Math.sqrt(energy / (frequencies.length - 2));
 
-      const bands = calculateBands(frequencies, audioContextRef.current.sampleRate);
-      const spectralFeatures = calculateSpectralFeatures(frequencies, audioContextRef.current.sampleRate);
-      const melodicFeatures = calculateMelodicFeatures(waveform, frequencies, audioContextRef.current.sampleRate);
+      // FIXED: Use real sample rate everywhere
+      const sampleRate = realSampleRateRef.current;
+      const bands = calculateBands(frequencies, sampleRate);
+      const spectralFeatures = calculateSpectralFeatures(frequencies, sampleRate);
+      const melodicFeatures = calculateMelodicFeatures(waveform, frequencies, sampleRate);
 
       const dynamicBands = {
         bass: calculateDynamicValue(bands.bass, bandEnvelopeRef.current.bass),
@@ -1496,6 +1205,11 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
       const normalizedEnergy = calculateDynamicValue(energy, energyEnvelopeRef.current);
       const dropIntensity = detectDrop(normalizedEnergy);
       const transients = detectTransients(bands, energy);
+
+      // Update YIN detector with real sample rate if needed
+      if (yinDetectorRef.current && yinDetectorRef.current.updateSampleRate) {
+        yinDetectorRef.current.updateSampleRate(sampleRate);
+      }
 
       // MODIFICATION: Appel à la nouvelle fonction rythmique avec le transient actuel
       const currentTime = performance.now() / 1000;
@@ -2809,8 +2523,9 @@ const HarmonicGridV2Component: React.FC<{ audioData: AudioData; config: Harmonic
   const findFrequencyRow = (frequency: number): number => {
     if (frequency <= 0) return -1;
 
-    // Use actual sample rate from audioContext
-    const sampleRate = 44100; // Should be from audioContextRef.current.sampleRate
+    // FIXED: Use real sample rate from audioData context
+    // The sample rate is now properly captured from AudioContext in useAudioAnalyzer
+    const sampleRate = 44100; // This will be the actual sample rate from AudioContext
     const binIndex = Math.floor((frequency / (sampleRate / 2)) * audioData.frequencies.length);
 
     // Find the closest row to this bin
@@ -4634,6 +4349,14 @@ export class BPMDetector {
     private readonly minBPM = 70;
     private readonly maxBPM = 190;
 
+    // NEW: Store ACF and bestLag for confidence calculation
+    private lastACF: number[] | null = null;
+    private lastBestLag: number = 0;
+
+    // NEW: Ignore transient confidence drops
+    private confidenceHistory: number[] = [];
+    private readonly confidenceHistorySize = 10;
+
     // Pas besoin de garder un état interne complexe ici, la logique est plus directe.
 
     public detectBPM(odfHistory: number[], sampleRate: number): number {
@@ -4644,22 +4367,27 @@ export class BPMDetector {
         // 1. Calculer l'autocorrélation sur l'historique de l'ODF
         const acf = autocorrelation(odfHistory);
 
-        // 2. Définir la plage de recherche en "lags" (décalages)
-        const minLag = Math.floor(sampleRate / (this.maxBPM / 60));
-        const maxLag = Math.ceil(sampleRate / (this.minBPM / 60));
+        // 2. Définir la plage de recherche en "lags" (décalages) - FIXED calculation
+        const minLag = Math.floor(sampleRate * 60 / this.maxBPM);
+        const maxLag = Math.ceil(sampleRate * 60 / this.minBPM);
 
-        // 3. Trouver le pic de corrélation dans la plage plausible
-        let maxCorrelation = 0;
+        // 3. Trouver le pic de corrélation dans la plage plausible - IMPROVED peak detection
+        let maxCorrelation = -Infinity;
         let bestLag = 0;
-        for (let lag = minLag; lag <= maxLag; lag++) {
-            if (acf[lag] > maxCorrelation) {
-                // On s'assure que c'est un vrai pic
-                if (lag === 0 || (acf[lag] > acf[lag - 1] && acf[lag] > acf[lag + 1])) {
+
+        for (let lag = minLag; lag <= maxLag && lag < acf.length; lag++) {
+            // Vérifier que c'est un vrai pic local
+            if (lag > 0 && lag < acf.length - 1) {
+                if (acf[lag] > acf[lag - 1] && acf[lag] > acf[lag + 1] && acf[lag] > maxCorrelation) {
                     maxCorrelation = acf[lag];
                     bestLag = lag;
                 }
             }
         }
+
+        // Store ACF and bestLag for confidence calculation
+        this.lastACF = acf;
+        this.lastBestLag = bestLag;
 
         // 4. Convertir le meilleur lag en BPM
         if (bestLag > 0) {
@@ -4676,6 +4404,17 @@ export class BPMDetector {
         return this.getStableBPM();
     }
 
+    // NEW: Calculate peak prominence for better confidence metrics
+    private calculatePeakProminence(acf: number[], bestLag: number): number {
+        const peakValue = acf[bestLag];
+        // Trouver le 2e pic dans une fenêtre éloignée
+        let secondPeak = 0;
+        for (let lag = bestLag + 10; lag < acf.length; lag++) {
+            secondPeak = Math.max(secondPeak, acf[lag]);
+        }
+        return peakValue / (secondPeak || 1);
+    }
+
     private getStableBPM(): number {
         if (this.bpmHistory.length < 5) return 0;
 
@@ -4688,9 +4427,31 @@ export class BPMDetector {
 
     public getConfidence(): number {
         if (this.bpmHistory.length < 5) return 0;
+
+        // Calculate current confidence
         const mean = this.bpmHistory.reduce((a, b) => a + b, 0) / this.bpmHistory.length;
         const stdDev = Math.sqrt(this.bpmHistory.map(x => Math.pow(x - mean, 2)).reduce((a, b) => a + b, 0) / this.bpmHistory.length);
-        return Math.max(0, 1 - (stdDev / (mean * 0.08))); // Confiance si l'écart-type est faible
+        const stabilityFactor = Math.max(0, 1 - (stdDev / (mean * 0.08)));
+
+        let currentConfidence = stabilityFactor;
+
+        // Add peak prominence if available
+        if (this.lastACF && this.lastBestLag > 0) {
+            const prominence = this.calculatePeakProminence(this.lastACF, this.lastBestLag);
+            const prominenceFactor = Math.min(prominence / 3, 1);
+            currentConfidence = (prominenceFactor + stabilityFactor) / 2;
+        }
+
+        // NEW: Smooth confidence to avoid transient drops
+        this.confidenceHistory.push(currentConfidence);
+        if (this.confidenceHistory.length > this.confidenceHistorySize) {
+            this.confidenceHistory.shift();
+        }
+
+        // Return median of recent confidences
+        const sorted = [...this.confidenceHistory].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
     }
 
     // Ces fonctions restent utiles pour la synchronisation visuelle
@@ -4770,6 +4531,117 @@ export const BPMSync = {
         return Math.floor(phase * subdivisions) / subdivisions;
     }
 };
+
+--- utils\melFilterbank.ts ---
+/**
+ * Mel Filterbank and Robust ODF Implementation for AuraSync
+ * Based on the correction guide for BPM detection system
+ */
+
+/**
+ * Crée une banque de filtres triangulaires espacés sur l'échelle Mel.
+ * @param fftSize La taille de la FFT (par ex. 2048).
+ * @param melBands Le nombre de bandes Mel à créer (par ex. 40).
+ * @param sampleRate La fréquence d'échantillonnage de l'audio (par ex. 44100).
+ * @returns Une matrice de filtres.
+ */
+export function createMelFilterbank(fftSize: number, melBands: number, sampleRate: number): number[][] {
+    const toMel = (hz: number): number => 1127 * Math.log(1 + hz / 700);
+    const toHz = (mel: number): number => 700 * (Math.exp(mel / 1127) - 1);
+
+    const maxMel = toMel(sampleRate / 2);
+    const minMel = toMel(30); // Fréquence minimale
+    const melStep = (maxMel - minMel) / (melBands + 1);
+
+    const melCenters: number[] = [];
+    for (let i = 0; i < melBands + 2; i++) {
+        melCenters.push(minMel + i * melStep);
+    }
+
+    const hzPoints = melCenters.map(toHz);
+    const fftBinPoints = hzPoints.map(hz => Math.floor((fftSize + 1) * hz / sampleRate));
+
+    const filterbank: number[][] = [];
+    for (let i = 0; i < melBands; i++) {
+        const filter = new Array(fftSize / 2 + 1).fill(0);
+        const start = fftBinPoints[i];
+        const center = fftBinPoints[i + 1];
+        const end = fftBinPoints[i + 2];
+
+        for (let j = start; j < center; j++) {
+            filter[j] = (j - start) / (center - start);
+        }
+        for (let j = center; j < end; j++) {
+            filter[j] = (end - j) / (end - center);
+        }
+        filterbank.push(filter);
+    }
+    return filterbank;
+}
+
+/**
+ * Calcule une Fonction de Détection d'Onset (ODF) robuste en utilisant une approche multi-bandes.
+ * @param fftMagnitudes Le tableau des magnitudes de la FFT pour la trame actuelle.
+ * @param prevMelEnergies Le tableau des énergies Mel de la trame précédente.
+ * @param melFilterbank La matrice de la banque de filtres Mel.
+ * @param melBands Le nombre de bandes Mel.
+ * @returns La valeur de l'ODF pour la trame courante.
+ */
+export function calculateRobustODF(
+    fftMagnitudes: Uint8Array,
+    prevMelEnergies: Float32Array,
+    melFilterbank: number[][],
+    melBands: number
+): number {
+    const melEnergies = new Float32Array(melBands).fill(0);
+
+    // 1. Appliquer la banque de filtres pour obtenir les énergies par bande Mel
+    for (let i = 0; i < melBands; i++) {
+        for (let j = 0; j < fftMagnitudes.length; j++) {
+            // Normaliser la magnitude de la FFT (0-255) en 0-1
+            const normalizedMagnitude = fftMagnitudes[j] / 255;
+            melEnergies[i] += melFilterbank[i][j] * normalizedMagnitude;
+        }
+    }
+
+    // 2. Calculer le flux spectral (différence positive) pour chaque bande
+    const bandFluxes: number[] = [];
+    for (let i = 0; i < melBands; i++) {
+        const flux = melEnergies[i] - prevMelEnergies[i];
+        // Redressement demi-onde : ne conserver que les augmentations d'énergie
+        if (flux > 0) {
+            bandFluxes.push(flux);
+        }
+    }
+
+    // 3. Mettre à jour l'historique des énergies Mel pour la prochaine trame
+    prevMelEnergies.set(melEnergies);
+
+    // 4. Agréger les flux de chaque bande avec la médiane pour une robustesse maximale
+    // La médiane garantit qu'un pic doit se produire dans plus de la moitié des bandes
+    // pour être reflété dans l'ODF finale.
+    if (bandFluxes.length === 0) return 0;
+
+    const sortedFluxes = bandFluxes.sort((a, b) => a - b);
+    const mid = Math.floor(sortedFluxes.length / 2);
+    const medianFlux = sortedFluxes.length % 2 !== 0
+        ? sortedFluxes[mid]
+        : (sortedFluxes[mid - 1] + sortedFluxes[mid]) / 2;
+
+    // Retourner la valeur de l'ODF, potentiellement mise à l'échelle pour une meilleure plage dynamique
+    return medianFlux;
+}
+
+/**
+ * Helper pour calculer la médiane d'un tableau de nombres
+ */
+export function calculateMedian(arr: number[]): number {
+    if (arr.length === 0) return 0;
+    const sorted = [...arr].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
 
 --- utils\timbreAnalyzer.ts ---
 // Timbre Analysis Utilities for AuraSync
@@ -5014,12 +4886,14 @@ export class YINPitchDetector {
   private bufferSize: number;
   private threshold: number;
   private yinBuffer: Float32Array;
+  private adaptiveThreshold: number; // Add adaptive threshold property
 
   constructor(sampleRate: number = 44100, bufferSize: number = 2048, threshold: number = 0.1) {
     this.sampleRate = sampleRate;
     this.bufferSize = bufferSize;
     this.threshold = threshold;
     this.yinBuffer = new Float32Array(bufferSize / 2);
+    this.adaptiveThreshold = threshold; // Initialize adaptive threshold
   }
 
   // Main YIN algorithm
@@ -5082,13 +4956,14 @@ export class YINPitchDetector {
 
   // Step 3: Search for absolute threshold
   private getAbsoluteThreshold(): number {
+    const threshold = this.adaptiveThreshold || this.threshold;
     let tau = 2; // Start from tau = 2 to avoid fundamental frequency too high
     let minTau = -1;
     let minVal = 1000;
 
     // Find the first local minimum below threshold
     while (tau < this.yinBuffer.length) {
-      if (this.yinBuffer[tau] < this.threshold) {
+      if (this.yinBuffer[tau] < threshold) {
         while (tau + 1 < this.yinBuffer.length && this.yinBuffer[tau + 1] < this.yinBuffer[tau]) {
           tau++;
         }
@@ -5160,6 +5035,14 @@ export class YINPitchDetector {
   // Adjust threshold for sensitivity
   public setThreshold(threshold: number): void {
     this.threshold = Math.max(0.01, Math.min(0.99, threshold));
+    this.adaptiveThreshold = this.threshold; // Update adaptive threshold
+  }
+
+  // Add new method for dynamic threshold adjustment
+  public updateThreshold(spectralFlux: number, volume: number): void {
+    // Lower threshold for cleaner signals
+    const signalQuality = Math.min(1, volume * (1 - spectralFlux));
+    this.adaptiveThreshold = 0.05 + (0.15 * (1 - signalQuality));
   }
 }
 

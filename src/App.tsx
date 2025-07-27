@@ -1,17 +1,17 @@
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Stats } from '@react-three/drei'
 import { Suspense, useRef, useEffect } from 'react'
-import { useAudioAnalyzer } from './hooks/useAudioAnalyzer'
+import { useAudioAnalyzerWorker } from './hooks/useAudioAnalyzerWorker'
 import { useConfigStore } from './store/configStore'
 import { VisualizationRenderer } from './scenes/VisualizationRenderer'
 import { ConfigPanel } from './components/ConfigPanel'
 
 function App() {
   const audioRef = useRef<HTMLAudioElement>(null)
-  const audioData = useAudioAnalyzer(audioRef.current || undefined)
+  const audioData = useAudioAnalyzerWorker(audioRef.current || undefined)
   const { global: globalConfig } = useConfigStore()
   const currentUrlRef = useRef<string | null>(null)
-  
+
   // Add logging for BPM detection and harmony analysis
   useEffect(() => {
     if (audioData.rhythmicFeatures.bpm > 0) {
@@ -55,7 +55,7 @@ function App() {
       if (currentUrlRef.current) {
         URL.revokeObjectURL(currentUrlRef.current)
       }
-      
+
       const url = URL.createObjectURL(file)
       currentUrlRef.current = url
       audioRef.current.src = url
@@ -82,15 +82,15 @@ function App() {
         gl={{ antialias: true }}
       >
         <color attach="background" args={[globalConfig.bgColor]} />
-        
+
         <Suspense fallback={null}>
           <ambientLight intensity={0.5} />
           <pointLight position={[10, 10, 10]} />
-          
+
           <VisualizationRenderer audioData={audioData} />
-          
-          <OrbitControls 
-            enableDamping 
+
+          <OrbitControls
+            enableDamping
             dampingFactor={0.05}
             enableZoom={true}
             enablePan={false}
@@ -101,7 +101,7 @@ function App() {
           <Stats />
         </Suspense>
       </Canvas>
-      
+
       <div style={{
         position: 'absolute',
         top: '20px',
@@ -174,12 +174,12 @@ function App() {
           <h3 style={{ margin: '0 0 5px 0', color: '#8888ff' }}>🥁 Rhythm Analysis</h3>
           <div>BPM: <strong>{audioData.rhythmicFeatures.bpm.toFixed(1)}</strong>
             <span style={{ color: audioData.rhythmicFeatures.bpmConfidence > 0.5 ? '#00ff00' : '#ff8800' }}>
-              ({Math.round(audioData.rhythmicFeatures.bpmConfidence * 100)}% confidence)
+              ({Math.round(audioData.rhythmicFeatures.bpmConfidence)}% confidence)
             </span>
           </div>
           <div>Beat Phase: {audioData.rhythmicFeatures.beatPhase.toFixed(3)}</div>
           <div>Subdivision: {audioData.rhythmicFeatures.subdivision}</div>
-          <div>Groove: {Math.round(audioData.rhythmicFeatures.groove * 100)}%</div>
+          <div>Groove: {Math.round(audioData.rhythmicFeatures.groove)}%</div>
         </div>
 
         {/* Enhanced Melodic Features - YIN Algorithm */}
@@ -262,7 +262,7 @@ function App() {
           </div>
         </div>
       </div>
-      
+
       <ConfigPanel />
     </div>
   )
