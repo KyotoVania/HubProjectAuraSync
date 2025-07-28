@@ -310,19 +310,54 @@ const HarmonicGridV2Component: React.FC<{ audioData: AudioData; config: Harmonic
         for (let s = 0; s < scrollAmount; s++) {
           const col = numCols - scrollAmount + s;
           const freqIndex = frequencyMapping[row];
-          let height = (frequencies[freqIndex] || 0) / 255;
 
-          // Apply noise gate
+          // IMPROVED: Use processed data with adaptive compression instead of raw frequencies
+          let height = 0;
+
+          // Calculate frequency position for band assignment
+          const freqPosition = row / numRows;
+          const nyquist = 22050; // Half of typical sample rate
+          const binSize = nyquist / frequencies.length;
+          const actualFreq = freqIndex * binSize;
+
+          // Use dynamic bands with adaptive compression for better drop/chill distinction
+          if (actualFreq <= 250) {
+            // Bass range: Use dynamicBands.bass (already compressed and normalized)
+            height = dynamicBands.bass;
+          } else if (actualFreq <= 4000) {
+            // Mid range: Use dynamicBands.mid
+            height = dynamicBands.mid;
+          } else {
+            // Treble range: Use dynamicBands.treble
+            height = dynamicBands.treble;
+          }
+
+          // Add fine frequency detail using raw frequencies but with better scaling
+          const rawHeight = (frequencies[freqIndex] || 0) / 255;
+
+          // Blend processed dynamic data with raw frequency detail
+          // Dynamic bands provide the compression, raw data provides frequency resolution
+          const blendFactor = 0.7; // Favor processed data for better dynamics
+          height = height * blendFactor + rawHeight * (1 - blendFactor);
+
+          // Apply noise gate to the blended result
           if (height < config.noiseGate) {
             height = 0;
           } else {
             height = (height - config.noiseGate) / (1 - config.noiseGate);
           }
 
-          // Spectral centroid boost
-          const freqPosition = row / numRows;
-          const centroidBoost = 1 + 0.5 * Math.exp(-Math.pow((freqPosition - spectralFeatures.centroid) * 2, 2));
-          height *= centroidBoost;
+          // Enhanced spectral centroid boost using spectral features
+          const centroidBoost = 1 + 0.3 * Math.exp(-Math.pow((freqPosition - spectralFeatures.centroid) * 2, 2));
+
+          // Add energy-based boost for better drop detection
+          const energyBoost = 1 + (audioData.energy * 0.5); // Use overall energy for boost
+
+          // Combine all enhancements
+          height *= centroidBoost * energyBoost;
+
+          // Clamp to reasonable range
+          height = Math.min(height, 2.0); // Allow some overshoot for dramatic effect
 
           gridData[row][col] = height;
           smoothedGrid[row][col] = smoothedGrid[row][col - 1] * config.smoothingFactor +

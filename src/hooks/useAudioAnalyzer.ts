@@ -299,10 +299,10 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     let flux = 0;
     if (melFilterbankRef.current && prevMelEnergiesRef.current) {
       flux = calculateRobustODF(
-        frequencies,
-        prevMelEnergiesRef.current,
-        melFilterbankRef.current,
-        MEL_BANDS
+          frequencies,
+          prevMelEnergiesRef.current,
+          melFilterbankRef.current,
+          MEL_BANDS
       );
     } else {
       // Fallback to old method if filterbank not ready
@@ -333,9 +333,9 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
 
   // YIN-based melodic analysis with robust chromagram
   const calculateMelodicFeatures = (
-    waveform: Uint8Array,
-    frequencies: Uint8Array,
-    sampleRate: number
+      waveform: Uint8Array,
+      frequencies: Uint8Array,
+      sampleRate: number
   ): MelodicFeatures => {
     // Initialize YIN detector with improved settings
     if (!yinDetectorRef.current) {
@@ -437,7 +437,7 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     // Apply temporal smoothing
     for (let i = 0; i < 12; i++) {
       chromaSmoothingRef.current[i] = chromaSmoothingRef.current[i] * CHROMA_SMOOTHING +
-                                       chroma[i] * (1 - CHROMA_SMOOTHING);
+          chroma[i] * (1 - CHROMA_SMOOTHING);
       chroma[i] = chromaSmoothingRef.current[i];
     }
 

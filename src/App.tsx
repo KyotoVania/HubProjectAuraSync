@@ -1,14 +1,14 @@
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Stats } from '@react-three/drei'
 import { Suspense, useRef, useEffect } from 'react'
-import { useAudioAnalyzerWorker } from './hooks/useAudioAnalyzerWorker'
+import { useAudioAnalyzer } from './hooks/useAudioAnalyzer'
 import { useConfigStore } from './store/configStore'
 import { VisualizationRenderer } from './scenes/VisualizationRenderer'
 import { ConfigPanel } from './components/ConfigPanel'
 
 function App() {
   const audioRef = useRef<HTMLAudioElement>(null)
-  const audioData = useAudioAnalyzerWorker(audioRef.current || undefined)
+  const audioData = useAudioAnalyzer(audioRef.current || undefined)
   const { global: globalConfig } = useConfigStore()
   const currentUrlRef = useRef<string | null>(null)
 

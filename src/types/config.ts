@@ -33,3 +33,28 @@ export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
   cameraMode: "orbit",
   bgColor: "#0a0a0a"
 };
+
+// Audio Analysis Types
+export interface AudioBands {
+  bass: number;
+  mid: number;
+  treble: number;
+}
+
+export interface AudioData {
+  volume: number;
+  bands: AudioBands;
+  frequencyData: Uint8Array;
+  timeData: Uint8Array;
+  bpm?: number;
+  pitch?: number;
+}
+
+export type AudioSourceType = "file" | "microphone" | "none";
+
+export interface AudioConfig {
+  fftSize: number;
+  smoothingTimeConstant: number;
+  minDecibels: number;
+  maxDecibels: number;
+}
