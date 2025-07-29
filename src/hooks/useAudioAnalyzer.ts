@@ -80,10 +80,10 @@ const DROP_CONFIG = {
 };
 
 const TRANSIENT_CONFIG = {
-  bass: { threshold: 0.08, multiplier: 1.8, decay: 0.85 },
-  mid: { threshold: 0.07, multiplier: 2.0, decay: 0.9 },
-  treble: { threshold: 0.06, multiplier: 2.2, decay: 0.92 },
-  overall: { threshold: 0.12, multiplier: 1.7, decay: 0.88 },
+  bass: { threshold: 0.08, multiplier: 1.8, decay: 0.85 },     // Reduced from 0.12
+  mid: { threshold: 0.07, multiplier: 2.0, decay: 0.9 },      // Reduced from 0.10
+  treble: { threshold: 0.06, multiplier: 2.2, decay: 0.92 },  // Reduced from 0.08
+  overall: { threshold: 0.12, multiplier: 1.7, decay: 0.88 }, // Reduced from 0.15
 };
 
 // Musical note frequencies (A4 = 440Hz)
@@ -164,13 +164,16 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     smoothedVolume: 0,
   });
 
-  // NEW: State for source type
   const [sourceType, setSourceType] = useState<AudioSourceType>('none');
-
-  const analyserRef = useRef<AnalyserNode | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
   const animationRef = useRef<number>(0);
-  const sourceNodeRef = useRef<MediaElementAudioSourceNode | MediaStreamAudioSourceNode | null>(null);
+
+  // --- NOUVEAU: Refs pour la gestion des sources avec GainNodes ---
+  const fileSourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const micSourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const fileGainNodeRef = useRef<GainNode | null>(null);
+  const micGainNodeRef = useRef<GainNode | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
 
   // --- Analysis state refs ---
@@ -192,21 +195,33 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
   const dropIntensityRef = useRef(0);
   const lastDropTimeRef = useRef(0);
 
+  // NEW: YIN Pitch Detector for superior fundamental frequency detection
   const yinDetectorRef = useRef<YINPitchDetector | null>(null);
+
+  // NEW: Timbre Analyzer for advanced musical analysis
   const timbreAnalyzerRef = useRef<TimbreAnalyzer | null>(null);
+
+  // NOUVEAU: Refs pour le BPM Detector basé sur l'autocorrélation
   const bpmDetectorRef = useRef(new BPMDetector());
-  const odfHistoryRef = useRef<number[]>([]);
+  const odfHistoryRef = useRef<number[]>([]); // Historique de l'ODF pour l'ACF
   const lastBeatTimeRef = useRef(0);
-  const ODF_SAMPLE_RATE = 43;
-  const ODF_HISTORY_SIZE = 256;
-  const realSampleRateRef = useRef<number>(44100);
+  const ODF_SAMPLE_RATE = 43; // Réduit de 45 à 43 Hz pour exactement 256 samples = 5.95 secondes
+  const ODF_HISTORY_SIZE = 256; // Environ 5.6 secondes d'historique
+
+  // FIXED: Store real sample rate from AudioContext
+  const realSampleRateRef = useRef<number>(44100); // Default fallback
+
+  // NEW: Chromagram smoothing
   const chromaSmoothingRef = useRef<number[]>(new Array(12).fill(0));
-  const CHROMA_SMOOTHING = 0.85;
+  const CHROMA_SMOOTHING = 0.85; // Smoothing factor
+
+  // NEW: Mel filterbank for robust ODF
   const melFilterbankRef = useRef<number[][] | null>(null);
   const prevMelEnergiesRef = useRef<Float32Array | null>(null);
-  const MEL_BANDS = 40;
+  const MEL_BANDS = 40; // Number of Mel bands for ODF calculation
 
-  // --- Analysis Functions (same as before) ---
+  // --- Enhanced Analysis Functions ---
+
   const calculateBands = (frequencies: Uint8Array, sampleRate: number): FrequencyBands => {
     const nyquist = sampleRate / 2;
     const binSize = nyquist / frequencies.length;
@@ -250,12 +265,14 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     let totalEnergy = 0;
     let centroidSum = 0;
 
+    // NEW: Initialize Mel filterbank if not already done
     if (!melFilterbankRef.current) {
       melFilterbankRef.current = createMelFilterbank(frequencies.length * 2, MEL_BANDS, sampleRate);
       prevMelEnergiesRef.current = new Float32Array(MEL_BANDS).fill(0);
       console.log('🎵 Mel Filterbank initialized with', MEL_BANDS, 'bands for robust ODF');
     }
 
+    // Calculate spectral centroid, spread, and rolloff
     for (let i = 1; i < frequencies.length - 1; i++) {
       const magnitude = frequencies[i] / 255;
       const freq = i * binSize;
@@ -287,6 +304,7 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     }
     const spread = totalEnergy > 0 ? Math.sqrt(spreadSum / totalEnergy) / nyquist : 0;
 
+    // NEW: Calculate robust multi-band ODF instead of simple spectral flux
     let flux = 0;
     if (melFilterbankRef.current && prevMelEnergiesRef.current) {
       flux = calculateRobustODF(
@@ -296,6 +314,7 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
           MEL_BANDS
       );
     } else {
+      // Fallback to old method if filterbank not ready
       const spectralChanges: number[] = [];
       for (let i = 1; i < frequencies.length - 1; i++) {
         const magnitude = frequencies[i] / 255;
@@ -308,6 +327,7 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
       flux = calculateMedian(spectralChanges);
     }
 
+    // Update frequency history for potential fallback
     for (let i = 0; i < frequencies.length; i++) {
       prevFrequenciesRef.current[i] = frequencies[i] / 255;
     }
@@ -315,37 +335,44 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     return {
       centroid: Math.min(1, centroid),
       spread: Math.min(1, spread),
-      flux: Math.min(1, flux * 10),
+      flux: Math.min(1, flux * 10), // Scale for better dynamic range
       rolloff: Math.min(1, rolloff),
     };
   };
 
+  // YIN-based melodic analysis with robust chromagram
   const calculateMelodicFeatures = (
       waveform: Uint8Array,
       frequencies: Uint8Array,
       sampleRate: number
   ): MelodicFeatures => {
+    // Initialize YIN detector with improved settings
     if (!yinDetectorRef.current) {
-      yinDetectorRef.current = new YINPitchDetector(sampleRate, 4096, 0.15);
+      yinDetectorRef.current = new YINPitchDetector(sampleRate, 4096, 0.15); // Larger buffer, higher threshold
     }
 
+    // Convert waveform for YIN algorithm with better normalization
     const float32Waveform = new Float32Array(waveform.length);
     let maxValue = 0;
 
+    // First pass: find max value for proper normalization
     for (let i = 0; i < waveform.length; i++) {
       const sample = Math.abs((waveform[i] - 128) / 128);
       if (sample > maxValue) maxValue = sample;
     }
 
+    // Second pass: normalize properly
     const normalizationFactor = maxValue > 0 ? 1 / maxValue : 1;
     for (let i = 0; i < waveform.length; i++) {
       float32Waveform[i] = ((waveform[i] - 128) / 128) * normalizationFactor;
     }
 
+    // YIN pitch detection
     const pitchResult = yinDetectorRef.current.detectPitch(float32Waveform);
     let dominantFreq = pitchResult.frequency;
     let noteConfidence = pitchResult.probability;
 
+    // FALLBACK: If YIN fails, use spectral peak detection
     if (dominantFreq <= 0 || noteConfidence < 0.3) {
       const nyquist = sampleRate / 2;
       const binSize = nyquist / frequencies.length;
@@ -353,6 +380,7 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
       let maxMagnitude = 0;
       let maxBin = 0;
 
+      // Focus on melodic range (80Hz - 1000Hz)
       const minBin = Math.floor(80 / binSize);
       const maxBinLimit = Math.floor(1000 / binSize);
 
@@ -363,7 +391,8 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
         }
       }
 
-      if (maxMagnitude > 30) {
+      if (maxMagnitude > 30) { // Minimum threshold for detection
+        // Parabolic interpolation for better accuracy
         if (maxBin > 0 && maxBin < frequencies.length - 1) {
           const y1 = frequencies[maxBin - 1];
           const y2 = frequencies[maxBin];
@@ -375,32 +404,38 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
           dominantFreq = maxBin * binSize;
         }
 
-        noteConfidence = Math.min(0.8, maxMagnitude / 255);
+        noteConfidence = Math.min(0.8, maxMagnitude / 255); // Cap confidence from spectral method
       }
     }
 
     const { note } = frequencyToNote(dominantFreq);
 
+    // Robust chromagram calculation with temporal smoothing
     const chroma = new Array(12).fill(0);
     const nyquist = sampleRate / 2;
     const binSize = nyquist / frequencies.length;
 
+    // Map spectrum to pitch classes with proper weighting
     for (let i = 1; i < frequencies.length; i++) {
       const freq = i * binSize;
       const magnitude = frequencies[i] / 255;
 
       if (freq < 80 || freq > 4000) continue;
 
+      // Find closest MIDI note
       const midiNote = 12 * Math.log2(freq / 440) + 69;
       const pitchClass = ((Math.round(midiNote) % 12) + 12) % 12;
 
+      // Weight by magnitude and perceptual importance
       const weight = magnitude * A_WEIGHTING(freq);
 
+      // Distribute energy to neighboring pitch classes for robustness
       chroma[pitchClass] += weight * 0.7;
       chroma[(pitchClass + 11) % 12] += weight * 0.15;
       chroma[(pitchClass + 1) % 12] += weight * 0.15;
     }
 
+    // Normalize
     const chromaSum = chroma.reduce((a, b) => a + b, 0);
     if (chromaSum > 0) {
       for (let i = 0; i < 12; i++) {
@@ -408,18 +443,21 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
       }
     }
 
+    // Apply temporal smoothing
     for (let i = 0; i < 12; i++) {
       chromaSmoothingRef.current[i] = chromaSmoothingRef.current[i] * CHROMA_SMOOTHING +
           chroma[i] * (1 - CHROMA_SMOOTHING);
       chroma[i] = chromaSmoothingRef.current[i];
     }
 
+    // Calculate harmonic content - FIXED
     let harmonicContent = 0;
     if (dominantFreq > 0 && frequencies.length > 0) {
       const fundamentalBin = Math.floor(dominantFreq / binSize);
       let fundamentalEnergy = 0;
       let harmonicEnergy = 0;
 
+      // Get fundamental energy (average over 3 bins for robustness)
       for (let i = -1; i <= 1; i++) {
         const bin = fundamentalBin + i;
         if (bin >= 0 && bin < frequencies.length) {
@@ -428,9 +466,11 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
       }
       fundamentalEnergy /= 3;
 
+      // Sum harmonic energies
       for (let harmonic = 2; harmonic <= 6; harmonic++) {
         const harmonicBin = Math.floor((dominantFreq * harmonic) / binSize);
         if (harmonicBin < frequencies.length) {
+          // Average over neighboring bins
           let energy = 0;
           for (let i = -1; i <= 1; i++) {
             const bin = harmonicBin + i;
@@ -442,6 +482,7 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
         }
       }
 
+      // Calculate ratio (0-1 range)
       if (fundamentalEnergy > 0.01) {
         harmonicContent = Math.min(1, harmonicEnergy / (fundamentalEnergy * 5));
       }
@@ -456,25 +497,31 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     };
   };
 
+  // Autocorrelation-based rhythmic analysis
   const calculateRhythmicFeatures = (spectralFlux: number, currentTime: number, isOverallTransient: boolean): RhythmicFeatures => {
+    // Update ODF history
     odfHistoryRef.current.push(spectralFlux);
     if (odfHistoryRef.current.length > ODF_HISTORY_SIZE) {
       odfHistoryRef.current.shift();
     }
 
+    // BPM detection via autocorrelation
     const bpm = bpmDetectorRef.current.detectBPM(odfHistoryRef.current, ODF_SAMPLE_RATE);
     const confidence = bpmDetectorRef.current.getConfidence();
 
+    // Debug logging for BPM detection
     if (bpm > 0 && confidence > 0.5) {
       console.log(`BPM: ${bpm.toFixed(1)}, Conf: ${(confidence * 100).toFixed(0)}%`);
     }
 
+    // Update beat timing on strong transients
     if (isOverallTransient) {
       lastBeatTimeRef.current = currentTime;
     }
 
     const beatPhase = bpmDetectorRef.current.getBeatPhase(currentTime, bpm, lastBeatTimeRef.current);
 
+    // Detect rhythmic subdivision
     let subdivision = 1;
     if (audioData.transients) {
       const transientCount = [
@@ -563,218 +610,337 @@ export function useAudioAnalyzer(audioSource?: HTMLAudioElement) {
     return dropIntensityRef.current;
   };
 
-  // NEW: Initialize audio context with microphone support
-  const initializeAudioContext = async (source: AudioSourceType) => {
+  // --- NOUVEAU: Initialisation et gestion de l'AudioContext et des sources ---
+  const initializeAudio = async () => {
+    if (audioContextRef.current) return;
+
     try {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new AudioContext();
-        analyserRef.current = audioContextRef.current.createAnalyser();
-        analyserRef.current.fftSize = 2048;
-        analyserRef.current.smoothingTimeConstant = 0.75;
-        analyserRef.current.minDecibels = -90;
-        analyserRef.current.maxDecibels = -10;
+      const context = new (window.AudioContext || (window as any).webkitAudioContext)();
+      audioContextRef.current = context;
+      realSampleRateRef.current = context.sampleRate;
 
-        realSampleRateRef.current = audioContextRef.current.sampleRate;
-        console.log('🎛️ AudioContext Sample Rate:', realSampleRateRef.current, 'Hz');
+      // Créer l'analyseur
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0.75;
+      analyser.minDecibels = -90;
+      analyser.maxDecibels = -10;
+      analyserRef.current = analyser;
+
+      // Créer les GainNodes pour chaque source
+      fileGainNodeRef.current = context.createGain();
+      micGainNodeRef.current = context.createGain();
+
+      // Initialiser les gains (les deux sources sont coupées au départ)
+      fileGainNodeRef.current.gain.value = 0;
+      micGainNodeRef.current.gain.value = 0;
+
+      // ### DEBUT DE LA MODIFICATION ###
+      // Le routage audio est modifié ici pour corriger le problème de feedback.
+
+      // 1. Connecter les deux sources (via leurs GainNodes) à l'analyseur.
+      //    Ceci est pour la *visualisation* uniquement.
+      fileGainNodeRef.current.connect(analyser);
+      micGainNodeRef.current.connect(analyser);
+      console.log('✓ Sources (fichier/micro) connectées à l\'analyseur pour la visualisation.');
+
+      // 2. Connecter UNIQUEMENT la source fichier à la destination (haut-parleurs).
+      //    Ceci est pour la *lecture audio*.
+      fileGainNodeRef.current.connect(context.destination);
+      console.log('✓ Source fichier connectée à la destination pour la lecture.');
+      console.log('✗ Source microphone NON connectée à la destination. Feedback évité.');
+
+
+      // L'ANCIENNE LIGNE DE CODE QUI CAUSAIT LE PROBLEME :
+      // analyser.connect(context.destination);
+      // Cette ligne envoyait tout ce qui était analysé (y compris le micro)
+      // vers les haut-parleurs, créant une boucle de feedback.
+
+      // ### FIN DE LA MODIFICATION ###
+
+      console.log('🎛️ AudioContext et GainNodes initialisés. Sample Rate:', context.sampleRate);
+
+      // Lancer la boucle d'analyse
+      analyze();
+
+    } catch (error) {
+      console.error("Erreur lors de l'initialisation de l'AudioContext:", error);
+      alert("Impossible d'initialiser l'audio. Votre navigateur est peut-être incompatible.");
+    }
+  };
+// --- NOUVEAU: Fonction publique pour changer de source audio ---
+  const switchAudioSource = async (source: AudioSourceType) => {
+    console.log('🔧 switchAudioSource called with:', source);
+
+    // Initialise l'AudioContext si ce n'est pas déjà fait
+    await initializeAudio();
+
+    const context = audioContextRef.current;
+    if (!context) {
+      console.error('❌ AudioContext not available after initialization');
+      return;
+    }
+
+    console.log('🎛️ AudioContext state:', context.state);
+
+    // Reprendre le contexte s'il est suspendu (action utilisateur requise)
+    if (context.state === 'suspended') {
+      try {
+        await context.resume();
+        console.log('🎵 AudioContext resumed successfully');
+      } catch (error) {
+        console.error('❌ Failed to resume AudioContext:', error);
       }
+    }
 
-      // Ensure analyser and context are initialized
-      if (!analyserRef.current || !audioContextRef.current) {
-        console.error('AudioContext or Analyser not initialized');
-        return;
-      }
+    // Gérer la source FICHIER
+    if (source === 'file') {
+      // Activer le gain du fichier et couper celui du micro
+      if (fileGainNodeRef.current) fileGainNodeRef.current.gain.setValueAtTime(1, context.currentTime);
+      if (micGainNodeRef.current) micGainNodeRef.current.gain.setValueAtTime(0, context.currentTime);
 
-      // Disconnect existing source
-      if (sourceNodeRef.current) {
-        sourceNodeRef.current.disconnect();
-        sourceNodeRef.current = null;
-      }
-
-      // Stop existing microphone stream
+      // Arrêter et nettoyer le stream du micro s'il est actif
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach(track => track.stop());
         mediaStreamRef.current = null;
+        if (micSourceNodeRef.current) {
+          micSourceNodeRef.current.disconnect();
+          micSourceNodeRef.current = null;
+        }
+        console.log('🎤 Microphone désactivé.');
       }
 
-      // Connect new source based on type
-      if (source === 'file' && audioSource) {
+      // Connecter l'élément audio s'il existe et n'est pas déjà connecté
+      if (audioSource && !fileSourceNodeRef.current) {
         try {
-          sourceNodeRef.current = audioContextRef.current.createMediaElementSource(audioSource);
-          sourceNodeRef.current.connect(analyserRef.current);
-          analyserRef.current.connect(audioContextRef.current.destination);
-          setSourceType('file');
-          console.log('🎵 Connected file audio source');
+          fileSourceNodeRef.current = context.createMediaElementSource(audioSource);
+          fileSourceNodeRef.current.connect(fileGainNodeRef.current!);
+          console.log('🎵 Source fichier connectée.');
         } catch (error) {
-          console.error('Failed to connect file audio source:', error);
+          // L'erreur "InvalidStateNode" peut se produire si on essaie de reconnecter. C'est normal.
+          if (error instanceof DOMException && error.name === 'InvalidStateError') {
+            console.warn('Source fichier déjà connectée.');
+          } else {
+            console.error('Erreur de connexion de la source fichier:', error);
+          }
         }
-      } else if (source === 'microphone') {
+      }
+
+      // CRITICAL FIX: Ensure audio element is ready to play
+      // This is the key to fixing the issue when returning to file mode
+      if (audioSource) {
+        // If audio is paused or ended, reset it
+        if (audioSource.paused || audioSource.ended) {
+          console.log('🔄 Audio element needs reactivation');
+          audioSource.currentTime = 0; // Reset to beginning if ended
+
+          // Try to play the audio to ensure data flows
+          const playPromise = audioSource.play();
+          if (playPromise !== undefined) {
+            playPromise
+                .then(() => {
+                  console.log('▶️ Audio playback resumed successfully');
+                  // Immediately pause if the user hasn't explicitly pressed play
+                  if (!audioSource.hasAttribute('data-user-initiated')) {
+                    audioSource.pause();
+                    console.log('⏸️ Audio paused (waiting for user action)');
+                  }
+                })
+                .catch(error => {
+                  console.log('⏸️ Auto-play blocked, user action required:', error.message);
+                });
+          }
+        }
+
+        // Ensure audio element is properly connected to the audio graph
+        console.log('🔍 Audio element state:', {
+          paused: audioSource.paused,
+          ended: audioSource.ended,
+          currentTime: audioSource.currentTime,
+          duration: audioSource.duration,
+          readyState: audioSource.readyState,
+          networkState: audioSource.networkState
+        });
+      }
+
+      setSourceType('file');
+      console.log('▶️ Source activée: Fichier');
+    }
+    // Gérer la source MICROPHONE
+    else if (source === 'microphone') {
+      // Activer le gain du micro et couper celui du fichier
+      if (micGainNodeRef.current) micGainNodeRef.current.gain.setValueAtTime(1, context.currentTime);
+      if (fileGainNodeRef.current) fileGainNodeRef.current.gain.setValueAtTime(0, context.currentTime);
+
+      // Arrêter et nettoyer le stream du fichier s'il est actif
+      if (fileSourceNodeRef.current) {
+        fileSourceNodeRef.current.disconnect();
+        fileSourceNodeRef.current = null;
+        console.log('🎵 Source fichier désactivée.');
+      }
+
+      // Vérifier si le microphone est déjà connecté
+      if (!micSourceNodeRef.current) {
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              echoCancellation: false,
-              noiseSuppression: false,
-              autoGainControl: false
-            }
-          });
+          // Demander l'accès au microphone
+          const stream = await navigator.mediaDevices.getUserMedia({audio: true});
           mediaStreamRef.current = stream;
 
-          sourceNodeRef.current = audioContextRef.current.createMediaStreamSource(stream);
-          sourceNodeRef.current.connect(analyserRef.current);
-          // Don't connect to destination to avoid feedback
+          // Créer le MediaStreamAudioSourceNode pour le micro
+          micSourceNodeRef.current = context.createMediaStreamSource(stream);
+          micSourceNodeRef.current.connect(micGainNodeRef.current!);
+          micSourceNodeRef.current.connect(analyserRef.current!); // Connecter à l'analyseur
 
-          setSourceType('microphone');
-          console.log('🎤 Connected microphone source');
+          console.log('🎤 Source microphone connectée.');
         } catch (error) {
-          console.error('Failed to access microphone:', error);
-          alert('Unable to access microphone. Please check permissions.');
+          console.error('❌ Erreur lors de la connexion du microphone:', error);
+          alert("Impossible d'accéder au microphone. Veuillez vérifier vos permissions.");
         }
       }
-    } catch (error) {
-      console.error('Failed to initialize audio context:', error);
+
+      setSourceType('microphone');
+      console.log('▶️ Source activée: Microphone');
     }
-  };
-
-  // NEW: Public method to switch audio source
-  const switchAudioSource = async (source: AudioSourceType) => {
-    if (source === sourceType) return;
-    await initializeAudioContext(source);
-  };
-
-  // Main analysis effect
-  useEffect(() => {
-    if (!audioSource && sourceType !== 'microphone') return;
-
-    // Initialize for file source if audio element is provided
-    if (audioSource && sourceType === 'none') {
-      initializeAudioContext('file');
+  }
+  // --- Boucle d'analyse principale ---
+  const analyze = () => {
+    if (!analyserRef.current) {
+      animationRef.current = requestAnimationFrame(analyze);
+      return;
     }
 
-    const frequencies = new Uint8Array(analyserRef.current?.frequencyBinCount || 512);
-    const waveform = new Uint8Array(analyserRef.current?.frequencyBinCount || 512);
-    prevFrequenciesRef.current = new Float32Array(frequencies.length);
+    const frequencies = new Uint8Array(analyserRef.current.frequencyBinCount);
+    const waveform = new Uint8Array(analyserRef.current.frequencyBinCount);
 
-    const analyze = () => {
-      if (!analyserRef.current || !audioContextRef.current) return;
+    analyserRef.current.getByteFrequencyData(frequencies);
+    analyserRef.current.getByteTimeDomainData(waveform);
 
-      analyserRef.current.getByteFrequencyData(frequencies);
-      analyserRef.current.getByteTimeDomainData(waveform);
-
-      const maxFreq = Math.max(...Array.from(frequencies));
-      if (maxFreq < 5) {
-        setAudioData(prev => ({
-          ...prev,
-          volume: 0,
-          energy: 0,
-          bands: { bass: 0, mid: 0, treble: 0 },
-          dynamicBands: { bass: 0, mid: 0, treble: 0 },
-          transients: { bass: false, mid: false, treble: false, overall: false },
-          dropIntensity: prev.dropIntensity * DROP_CONFIG.decay,
-          melodicFeatures: {
-            dominantFrequency: 0,
-            dominantNote: 'N/A',
-            noteConfidence: 0,
-            harmonicContent: 0,
-            pitchClass: new Array(12).fill(0)
-          },
-          rhythmicFeatures: {
-            ...prev.rhythmicFeatures,
-            bpm: 0,
-            bpmConfidence: 0,
-            beatPhase: 0,
-            groove: prev.rhythmicFeatures.groove * 0.95
-          }
-        }));
-        animationRef.current = requestAnimationFrame(analyze);
-        return;
-      }
-
-      let rms = 0;
-      for (let i = 0; i < waveform.length; i++) {
-        const sample = (waveform[i] - 128) / 128;
-        rms += sample * sample;
-      }
-      const volume = Math.sqrt(rms / waveform.length);
-
-      let energy = 0;
-      for (let i = 1; i < frequencies.length - 1; i++) {
-        const magnitude = frequencies[i] / 255;
-        energy += magnitude * magnitude;
-      }
-      energy = Math.sqrt(energy / (frequencies.length - 2));
-
-      const sampleRate = realSampleRateRef.current;
-      const bands = calculateBands(frequencies, sampleRate);
-      const spectralFeatures = calculateSpectralFeatures(frequencies, sampleRate);
-      const melodicFeatures = calculateMelodicFeatures(waveform, frequencies, sampleRate);
-
-      const dynamicBands = {
-        bass: calculateDynamicValue(bands.bass, bandEnvelopeRef.current.bass),
-        mid: calculateDynamicValue(bands.mid, bandEnvelopeRef.current.mid),
-        treble: calculateDynamicValue(bands.treble, bandEnvelopeRef.current.treble),
-      };
-
-      const normalizedEnergy = calculateDynamicValue(energy, energyEnvelopeRef.current);
-      const dropIntensity = detectDrop(normalizedEnergy);
-      const transients = detectTransients(bands, energy);
-
-      if (yinDetectorRef.current && yinDetectorRef.current.updateSampleRate) {
-        yinDetectorRef.current.updateSampleRate(sampleRate);
-      }
-
-      const currentTime = performance.now() / 1000;
-      const rhythmicFeatures = calculateRhythmicFeatures(spectralFeatures.flux, currentTime, transients.overall);
-
-      if (!timbreAnalyzerRef.current) {
-        timbreAnalyzerRef.current = new TimbreAnalyzer();
-      }
-
-      const timbreProfile = timbreAnalyzerRef.current.analyzeTimbre(melodicFeatures, spectralFeatures);
-      const musicalContext = timbreAnalyzerRef.current.analyzeMusicalContext(melodicFeatures, timbreProfile);
-
+    const maxFreq = Math.max(...Array.from(frequencies));
+    if (maxFreq < 5) {
       setAudioData(prev => ({
         ...prev,
-        frequencies: frequencies.slice(),
-        waveform: waveform.slice(),
-        volume,
-        energy,
-        bands,
-        dynamicBands,
-        transients,
-        dropIntensity,
-        spectralFeatures,
-        melodicFeatures,
-        rhythmicFeatures,
-        timbreProfile,
-        musicalContext,
-        bass: dynamicBands.bass,
-        mids: dynamicBands.mid,
-        treble: dynamicBands.treble,
-        beat: transients.overall,
-        smoothedVolume: volume,
+        volume: 0,
+        energy: 0,
+        bands: { bass: 0, mid: 0, treble: 0 },
+        dynamicBands: { bass: 0, mid: 0, treble: 0 },
+        transients: { bass: false, mid: false, treble: false, overall: false },
+        dropIntensity: prev.dropIntensity * DROP_CONFIG.decay,
+        melodicFeatures: {
+          dominantFrequency: 0,
+          dominantNote: 'N/A',
+          noteConfidence: 0,
+          harmonicContent: 0,
+          pitchClass: new Array(12).fill(0)
+        },
+        rhythmicFeatures: {
+          ...prev.rhythmicFeatures,
+          bpm: 0,
+          bpmConfidence: 0,
+          beatPhase: 0,
+          groove: prev.rhythmicFeatures.groove * 0.95
+        }
       }));
-
-      prevBandsRef.current = bands;
       animationRef.current = requestAnimationFrame(analyze);
+      return;
+    }
+
+    let rms = 0;
+    for (let i = 0; i < waveform.length; i++) {
+      const sample = (waveform[i] - 128) / 128;
+      rms += sample * sample;
+    }
+    const volume = Math.sqrt(rms / waveform.length);
+
+    let energy = 0;
+    for (let i = 1; i < frequencies.length - 1; i++) {
+      const magnitude = frequencies[i] / 255;
+      energy += magnitude * magnitude;
+    }
+    energy = Math.sqrt(energy / (frequencies.length - 2));
+
+    // FIXED: Use real sample rate everywhere
+    const sampleRate = realSampleRateRef.current;
+    const bands = calculateBands(frequencies, sampleRate);
+    const spectralFeatures = calculateSpectralFeatures(frequencies, sampleRate);
+    const melodicFeatures = calculateMelodicFeatures(waveform, frequencies, sampleRate);
+
+    const dynamicBands = {
+      bass: calculateDynamicValue(bands.bass, bandEnvelopeRef.current.bass),
+      mid: calculateDynamicValue(bands.mid, bandEnvelopeRef.current.mid),
+      treble: calculateDynamicValue(bands.treble, bandEnvelopeRef.current.treble),
     };
 
-    analyze();
+    const normalizedEnergy = calculateDynamicValue(energy, energyEnvelopeRef.current);
+    const dropIntensity = detectDrop(normalizedEnergy);
+    const transients = detectTransients(bands, energy);
 
+    // Update YIN detector with real sample rate if needed
+    if (yinDetectorRef.current && yinDetectorRef.current.updateSampleRate) {
+      yinDetectorRef.current.updateSampleRate(sampleRate);
+    }
+
+    // MODIFICATION: Appel à la nouvelle fonction rythmique avec le transient actuel
+    const currentTime = performance.now() / 1000;
+    // On passe le flux spectral ET le transient du frame actuel pour une synchronisation parfaite
+    const rhythmicFeatures = calculateRhythmicFeatures(spectralFeatures.flux, currentTime, transients.overall);
+
+    // NEW: Use TimbreAnalyzer for advanced musical analysis
+    if (!timbreAnalyzerRef.current) {
+      timbreAnalyzerRef.current = new TimbreAnalyzer();
+    }
+
+    const timbreProfile = timbreAnalyzerRef.current.analyzeTimbre(melodicFeatures, spectralFeatures);
+    const musicalContext = timbreAnalyzerRef.current.analyzeMusicalContext(melodicFeatures, timbreProfile);
+
+    setAudioData(prev => ({
+      ...prev,
+      frequencies: frequencies.slice(),
+      waveform: waveform.slice(),
+      volume,
+      energy,
+      bands,
+      dynamicBands,
+      transients,
+      dropIntensity,
+      spectralFeatures,
+      melodicFeatures,
+      rhythmicFeatures,
+      timbreProfile,
+      musicalContext,
+      bass: dynamicBands.bass,
+      mids: dynamicBands.mid,
+      treble: dynamicBands.treble,
+      beat: transients.overall,
+      smoothedVolume: volume,
+    }));
+
+    prevBandsRef.current = bands;
+    animationRef.current = requestAnimationFrame(analyze);
+  };
+
+  // --- Effet pour le nettoyage ---
+  useEffect(() => {
+    // L'initialisation se fait maintenant via switchAudioSource
+    // Cet effet gère uniquement le nettoyage au démontage du composant
     return () => {
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-      if (sourceNodeRef.current) sourceNodeRef.current.disconnect();
-      if (analyserRef.current) analyserRef.current.disconnect();
-
-      // Stop microphone stream if active
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+      // Arrêter le stream micro
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach(track => track.stop());
       }
+      // Fermer l'AudioContext
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close();
+      }
     };
-  }, [audioSource, sourceType]);
+  }, []);
 
-  // Return audio data and control functions
   return {
     audioData,
+    audioContext: audioContextRef.current,
     sourceType,
-    switchAudioSource
+    switchAudioSource, // Exposer la nouvelle fonction
   };
 }

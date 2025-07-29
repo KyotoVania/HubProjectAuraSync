@@ -1,6 +1,6 @@
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Stats } from '@react-three/drei'
-import { Suspense, useRef, useEffect } from 'react'
+import { Suspense, useRef, useEffect, useState } from 'react'
 import { useAudioAnalyzer } from './hooks/useAudioAnalyzer'
 import { useConfigStore } from './store/configStore'
 import { VisualizationRenderer } from './scenes/VisualizationRenderer'
@@ -8,9 +8,37 @@ import { ConfigPanel } from './components/ConfigPanel'
 
 function App() {
   const audioRef = useRef<HTMLAudioElement>(null)
-  const { audioData, sourceType, switchAudioSource } = useAudioAnalyzer(audioRef.current || undefined)
+  const [audioElement, setAudioElement] = useState<HTMLAudioElement | undefined>(undefined)
+  const { audioData, audioContext, sourceType, switchAudioSource } = useAudioAnalyzer(audioElement)
   const { global: globalConfig } = useConfigStore()
   const currentUrlRef = useRef<string | null>(null)
+
+  // Effet pour initialiser l'élément audio quand la ref est prête
+  useEffect(() => {
+    if (audioRef.current && !audioElement) {
+      console.log('🎵 Audio element ready, initializing analyzer');
+      setAudioElement(audioRef.current);
+
+      // Initialiser la source par défaut APRÈS que l'élément audio soit prêt
+      if (switchAudioSource) {
+        console.log('🎵 Initializing default file source');
+        switchAudioSource('file');
+      }
+    }
+  }, [audioElement, switchAudioSource]);
+
+  // Effet pour forcer l'initialisation au montage du composant
+  useEffect(() => {
+    // Petit délai pour s'assurer que la ref est définie
+    const timer = setTimeout(() => {
+      if (audioRef.current && !audioElement) {
+        console.log('🎵 Force initializing audio element on mount');
+        setAudioElement(audioRef.current);
+      }
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, []); // Se lance une seule fois au montage
 
   // Add logging for BPM detection and harmony analysis
   useEffect(() => {
@@ -59,6 +87,11 @@ function App() {
       const url = URL.createObjectURL(file)
       currentUrlRef.current = url
       audioRef.current.src = url
+
+      // Assurer que le contexte est prêt pour la lecture
+      if (audioContext && audioContext.state === 'suspended') {
+        audioContext.resume();
+      }
     }
   }
 
@@ -70,6 +103,26 @@ function App() {
       }
     }
   }, [])
+
+  const handlePlay = async () => {
+    console.log('🎵 handlePlay called');
+
+    // Vérifie si le contexte audio existe et est suspendu
+    if (audioContext && audioContext.state === 'suspended') {
+      try {
+        await audioContext.resume();
+        console.log('🎵 AudioContext resumed from suspended state');
+      } catch (error) {
+        console.error('❌ Failed to resume AudioContext in handlePlay:', error);
+      }
+    }
+
+    // Force la reconnexion de la source si nécessaire
+    if (sourceType === 'file' && switchAudioSource) {
+      console.log('🔄 Re-initializing file source on play');
+      await switchAudioSource('file');
+    }
+  }
 
   return (
       <div style={{ width: '100vw', height: '100vh', position: 'relative', background: '#000' }}>
@@ -118,78 +171,94 @@ function App() {
         }}>
           <h2 style={{ margin: '0 0 10px 0' }}>AuraSync - Enhanced Audio Analysis</h2>
 
-          {/* Audio Source Selection */}
-          <div style={{
-            marginBottom: '15px',
-            padding: '10px',
-            background: 'rgba(255,255,255,0.1)',
-            borderRadius: '4px'
-          }}>
-            <h4 style={{ margin: '0 0 10px 0', color: '#88ff88' }}>🎵 Audio Source</h4>
+          {/* --- NOUVEAU: Panneau de sélection de la source --- */}
+          <div style={{ marginBottom: '15px', padding: '10px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px' }}>
+            <h4 style={{ margin: '0 0 10px 0', color: '#88ff88' }}>🎵 Source Audio</h4>
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
                   onClick={() => switchAudioSource('file')}
                   style={{
                     flex: 1,
                     padding: '8px',
-                    background: sourceType === 'file' ? '#0066cc' : 'rgba(255,255,255,0.1)',
-                    border: '1px solid #333',
+                    background: sourceType === 'file' ? '#0066cc' : '#333',
+                    border: '1px solid #555',
                     borderRadius: '4px',
                     color: 'white',
                     cursor: 'pointer',
-                    fontSize: '12px',
-                    transition: 'all 0.2s'
+                    transition: 'background 0.2s'
                   }}
               >
-                📁 File
+                📁 Fichier
               </button>
               <button
                   onClick={() => switchAudioSource('microphone')}
                   style={{
                     flex: 1,
                     padding: '8px',
-                    background: sourceType === 'microphone' ? '#cc0066' : 'rgba(255,255,255,0.1)',
-                    border: '1px solid #333',
+                    background: sourceType === 'microphone' ? '#cc0066' : '#333',
+                    border: '1px solid #555',
                     borderRadius: '4px',
                     color: 'white',
                     cursor: 'pointer',
-                    fontSize: '12px',
-                    transition: 'all 0.2s'
+                    transition: 'background 0.2s'
                   }}
               >
-                🎤 Microphone
+                🎤 Micro
               </button>
             </div>
           </div>
 
-          {/* File Upload - Only show when file source is selected */}
+          {/* --- NOUVEAU: Affichage conditionnel basé sur la source --- */}
           {sourceType === 'file' && (
-              <>
+              <div id="file-controls" style={{ marginBottom: '15px' }}>
                 <input
                     type="file"
                     accept="audio/*"
                     onChange={handleFileUpload}
-                    style={{ marginBottom: '10px' }}
+                    style={{ marginBottom: '10px', color: 'white' }}
                 />
                 <br />
                 <audio
                     ref={audioRef}
                     controls
-                    style={{ width: '200px' }}
+                    onPlay={handlePlay}
+                    style={{ width: '200px', marginBottom: '10px' }}
                 />
-              </>
+                {/* Bouton de démarrage d'urgence */}
+                <div>
+                  <button
+                      onClick={async () => {
+                        console.log('🚀 Force start analysis button clicked');
+                        if (switchAudioSource) {
+                          await switchAudioSource('file');
+                        }
+                      }}
+                      style={{
+                        padding: '8px 16px',
+                        background: '#00aa00',
+                        border: '1px solid #00ff00',
+                        borderRadius: '4px',
+                        color: 'white',
+                        cursor: 'pointer',
+                        fontSize: '12px'
+                      }}
+                  >
+                    🚀 Force Start Analysis
+                  </button>
+                </div>
+              </div>
           )}
 
-          {/* Microphone Status - Only show when microphone is selected */}
           {sourceType === 'microphone' && (
-              <div style={{
+              <div id="mic-controls" style={{
                 padding: '10px',
                 background: 'rgba(204,0,102,0.2)',
                 borderRadius: '4px',
-                marginBottom: '10px'
+                marginBottom: '15px',
+                border: '1px solid rgba(204,0,102,0.5)'
               }}>
-                <p style={{ margin: 0, fontSize: '12px' }}>
-                  🎤 Microphone Active
+                <p style={{ margin: 0, fontSize: '12px', display: 'flex', alignItems: 'center' }}>
+                  🎤 Microphone Actif
                   <span style={{
                     display: 'inline-block',
                     width: '8px',
@@ -200,15 +269,30 @@ function App() {
                     animation: 'pulse 1.5s infinite'
                   }}></span>
                 </p>
+                <style>
+                  {`
+                      @keyframes pulse {
+                        0% { opacity: 1; }
+                        50% { opacity: 0.5; }
+                        100% { opacity: 1; }
+                      }
+                    `}
+                </style>
               </div>
           )}
 
-          {/* Hidden audio element for file source */}
-          {sourceType !== 'file' && (
-              <audio
-                  ref={audioRef}
-                  style={{ display: 'none' }}
-              />
+          {sourceType === 'none' && (
+              <div style={{
+                padding: '10px',
+                background: 'rgba(100,100,100,0.2)',
+                borderRadius: '4px',
+                marginBottom: '15px',
+                textAlign: 'center',
+                fontSize: '12px',
+                color: '#aaa'
+              }}>
+                Sélectionnez une source audio pour commencer l'analyse
+              </div>
           )}
 
           {/* Basic Audio Metrics */}
