@@ -5,39 +5,75 @@ import { TimbreAnalyzer, type TimbreProfile, type MusicalContext } from '../util
 import { createMelFilterbank, calculateRobustODF, calculateMedian } from '../utils/melFilterbank';
 
 // --- Type Definitions ---
+/**
+ * Represents the energy in different frequency bands.
+ */
 export interface FrequencyBands {
+  /** Energy in the bass band (20-250 Hz). */
   bass: number; // 20-250 Hz
+  /** Energy in the mid band (250-4000 Hz). */
   mid: number; // 250-4000 Hz
+  /** Energy in the treble band (4000-20000 Hz). */
   treble: number; // 4000-20000 Hz
 }
 
+/**
+ * Represents detected transients (sudden increases in energy).
+ */
 export interface Transients {
+  /** Transient detected in the bass band. */
   bass: boolean;
+  /** Transient detected in the mid band. */
   mid: boolean;
+  /** Transient detected in the treble band. */
   treble: boolean;
+  /** Overall transient detected. */
   overall: boolean;
 }
 
+/**
+ * Represents spectral features of the audio.
+ */
 export interface SpectralFeatures {
+  /** The spectral centroid, indicating the brightness of the sound (0-1). */
   centroid: number; // Brightness indicator (0-1)
+  /** The spectral spread, indicating the width of the spectrum (0-1). */
   spread: number; // Spectral width (0-1)
+  /** The spectral flux, indicating the rate of change of the spectrum (0-1). */
   flux: number; // Spectral change rate (0-1)
+  /** The spectral rolloff, the frequency below which 85% of the energy is contained (0-1). */
   rolloff: number; // Frequency below which 85% of energy is contained (0-1)
 }
 
+/**
+ * Represents melodic features of the audio.
+ */
 export interface MelodicFeatures {
+  /** The dominant frequency in Hz. */
   dominantFrequency: number; // Hz
+  /** The dominant musical note (e.g., "A4", "C#5"). */
   dominantNote: string; // Musical note (e.g., "A4", "C#5")
+  /** The confidence in the detected note (0-1). */
   noteConfidence: number; // 0-1
+  /** The richness of the harmonic content (0-1). */
   harmonicContent: number; // 0-1, measure of harmonic richness
+  /** A 12-element chroma vector representing the distribution of energy across pitch classes. */
   pitchClass: number[]; // 12-element chroma vector
 }
 
+/**
+ * Represents rhythmic features of the audio.
+ */
 export interface RhythmicFeatures {
+  /** The detected beats per minute (BPM). */
   bpm: number;
+  /** The confidence in the detected BPM (0-100). */
   bpmConfidence: number; // 0-100
+  /** The position within the current beat (0-1). */
   beatPhase: number; // 0-1, position within current beat
+  /** The detected rhythmic subdivision (1, 2, 4, 8, etc.). */
   subdivision: number; // 1, 2, 4, 8 etc - detected rhythmic subdivision
+  /** A measure of rhythmic stability (0-100). */
   groove: number; // 0-100, measure of rhythmic stability
 }
 

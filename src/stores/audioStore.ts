@@ -93,19 +93,6 @@ const ENVELOPE_CONFIG = {
   adaptiveRate: 0.1,
 };
 
-const DROP_CONFIG = {
-  decay: 0.95,
-  threshold: 0.5,
-  cooldown: 500,
-};
-
-const TRANSIENT_CONFIG = {
-  bass: { threshold: 0.08, multiplier: 1.8, decay: 0.85 },
-  mid: { threshold: 0.07, multiplier: 2.0, decay: 0.9 },
-  treble: { threshold: 0.06, multiplier: 2.2, decay: 0.92 },
-  overall: { threshold: 0.12, multiplier: 1.7, decay: 0.88 },
-};
-
 // Musical constants
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const A4_FREQ = 440;
@@ -117,19 +104,6 @@ const A_WEIGHTING = (freq: number): number => {
   const f4 = f2 * f2;
   return (12194 * 12194 * f4) /
       ((f2 + 20.6 * 20.6) * Math.sqrt((f2 + 107.7 * 107.7) * (f2 + 737.9 * 737.9)) * (f2 + 12194 * 12194));
-};
-
-const frequencyToNote = (freq: number): { note: string; cents: number } => {
-  if (freq <= 0) return { note: 'N/A', cents: 0 };
-  const midiNumber = 12 * Math.log2(freq / A4_FREQ) + A4_MIDI;
-  const roundedMidi = Math.round(midiNumber);
-  const cents = (midiNumber - roundedMidi) * 100;
-  const octave = Math.floor(roundedMidi / 12) - 1;
-  const noteIndex = roundedMidi % 12;
-  return {
-    note: `${NOTE_NAMES[noteIndex]}${octave}`,
-    cents: Math.round(cents)
-  };
 };
 
 export const useAudioStore = create<AudioStoreState>()(
@@ -160,7 +134,7 @@ export const useAudioStore = create<AudioStoreState>()(
         yinDetector: null as YINPitchDetector | null,
         bpmDetector: null as BPMDetector | null,
         timbreAnalyzer: null as TimbreAnalyzer | null,
-        melFilters: [] as Float32Array[],
+        melFilters: [] as number[][],
       };
 
       // Fonction d'analyse simplifiée (logique extraite du hook)
@@ -182,10 +156,10 @@ export const useAudioStore = create<AudioStoreState>()(
           analysisState.yinDetector = new YINPitchDetector(sampleRate);
         }
         if (!analysisState.bpmDetector) {
-          analysisState.bpmDetector = new BPMDetector(sampleRate);
+          analysisState.bpmDetector = new BPMDetector();
         }
         if (!analysisState.timbreAnalyzer) {
-          analysisState.timbreAnalyzer = new TimbreAnalyzer(sampleRate);
+          analysisState.timbreAnalyzer = new TimbreAnalyzer();
         }
         if (analysisState.melFilters.length === 0) {
           analysisState.melFilters = createMelFilterbank(2048, sampleRate, 40);
