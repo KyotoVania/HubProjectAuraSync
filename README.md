@@ -1,69 +1,43 @@
-# AuraSync - Visualiseur Musical 3D Audio-Réactif
+# AuraSync: Visualiseur Web 3D Audio-Réactif
 
-Projet de 4ème année Epitech - Visualiseur musical 3D interactif qui réagit en temps réel à une source audio.
+AuraSync est un visualiseur musical 3D audio-réactif de pointe développé avec TypeScript, React, Three.js (via React Three Fiber), et l'API Web Audio. Ce projet a été conçu pour offrir une expérience visuelle immersive et dynamique qui se synchronise avec la musique en temps réel.
 
-## 🎯 Objectif
+## Fonctionnalités
 
-Créer une application web 3D riche et interactive qui transforme l'audio en visualisations immersives en temps réel (fichier local ou microphone).
+*   **Visualisations Multiples :** Plusieurs scènes 3D sont disponibles, chacune avec des effets visuels uniques.
+*   **Analyse Audio en Temps Réel :** Le visualiseur analyse l'audio en temps réel pour extraire des caractéristiques telles que le volume, les basses, les médiums, les aigus, le BPM, et plus encore.
+*   **Contrôle Utilisateur :** Un panneau de configuration permet de changer de visualisation, d'ajuster les paramètres visuels, et de choisir la source audio.
+*   **Sources Audio Multiples :** Le visualiseur peut utiliser un fichier audio local ou l'entrée du microphone comme source audio.
 
-## 🛠️ Stack Technologique
+## Scènes Implémentées
 
-- **Langage**: TypeScript
-- **Framework**: React avec Vite
-- **Moteur 3D**: React Three Fiber (R3F)
-- **Helpers 3D**: @react-three/drei  
-- **Analyse Audio**: Web Audio API (AnalyserNode)
-- **Shaders**: GLSL (OpenGL Shading Language)
-- **Interface**: Leva pour le panneau de contrôle
-- **État**: Zustand pour la gestion d'état global
+*   **Bars 2D:** Une visualisation 2D simple avec des barres qui réagissent à la musique.
+*   **Constellation Vivante:** Une scène de particules qui crée une constellation dynamique et réactive.
+*   **Harmonic Grid (V1, V2, V3):** Plusieurs versions d'une grille harmonique qui réagit aux fréquences audio.
+*   **Chain Spell Render:** Une scène complexe avec des shaders GLSL personnalisés pour un effet visuel de "sorts en chaîne".
 
-## 🏗️ Architecture
+## Comment Lancer le Projet
 
-- **Paradigme déclaratif**: Scène 3D (JSX) fonction de l'état React
-- **Structure modulaire**: Organisation claire en répertoires
-  - `src/components` - Composants réutilisables
-  - `src/hooks` - Hooks personnalisés (notamment `useAudioAnalyzer`)
-  - `src/scenes` - Scènes "Auras" 3D
-  - `src/glsl` - Shaders personnalisés
-- **Flux unidirectionnel**: Données audio → État React → Rendu 3D
+1.  **Installer les dépendances :**
+    ```bash
+    npm install
+    ```
+2.  **Lancer le serveur de développement :**
+    ```bash
+    npm run dev
+    ```
+3.  Ouvrez votre navigateur et allez à l'adresse `http://localhost:5173` (ou le port indiqué dans la console).
 
-## 🚀 Installation et Démarrage
+## Structure du Projet
 
-```bash
-npm install
-npm run dev
-```
+Le projet est structuré de manière modulaire pour faciliter la maintenance et l'ajout de nouvelles fonctionnalités.
 
-L'application sera disponible sur `http://localhost:5173`
-
-## 📊 État Actuel (Jour 2)
-
-✅ **Jour 1 - Fondations**
-- Configuration Vite + React + TypeScript
-- Intégration React Three Fiber + Drei
-- Scène de base avec contrôles orbitaux
-- Premier visuel "PulsarGrid" audio-réactif
-- Interface utilisateur basique
-
-✅ **Jour 2 - Module Audio Robuste**
-- Hook `useAudioAnalyzer` avec gestion d'erreurs
-- Upload de fichier avec `URL.createObjectURL`
-- AudioContext et AnalyserNode configurés
-- Cleanup mémoire approprié
-- Connexion audio source sécurisée
-
-## 🎵 Fonctionnalités Actuelles
-
-- **Chargement de fichiers audio** via interface utilisateur
-- **Analyse audio temps réel** avec Web Audio API
-- **Visualisation 3D réactive** avec grille de cubes pulsants
-- **Contrôles 3D** pour navigation dans la scène
-- **Métriques audio** affichage du volume en temps réel
-
-## 🔧 Développement
-
-Le projet utilise une approche modulaire avec des hooks React personnalisés pour l'analyse audio et Zustand pour la gestion d'état globale. La scène 3D est déclarative et réactive aux changements d'état audio.
-
----
-
-*Projet AuraSync - Epitech 4ème année - 104h / 4 ECTS*
+*   `src/components`: Contient les composants React réutilisables.
+*   `src/hooks`: Contient les hooks React personnalisés, y compris le `useAudioAnalyzer` pour l'analyse audio.
+*   `src/scenes`: Contient les différentes scènes de visualisation.
+*   `src/glsl`: Contient les fichiers de shaders GLSL. Note : certains shaders sont également définis directement dans les composants de scène (par exemple, `ChainSpellRender.tsx`).
+*   `src/store`: Contient le store Zustand pour la gestion de l'état.
+*   `src/styles`: Contient les fichiers CSS pour le style de l'application.
+*   `src/types`: Contient les définitions de types TypeScript.
+*   `src/utils`: Contient les fonctions utilitaires pour l'analyse audio et d'autres tâches.
+*   `src/workers`: Contient les web workers (non utilisé actuellement).
