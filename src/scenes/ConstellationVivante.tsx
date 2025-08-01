@@ -304,38 +304,38 @@ const ConstellationVivanteComponent: React.FC<{ audioData: AudioData; config: Co
       const frequencyBinIndex = Math.floor(freqPosition * audioData.frequencies.length);
       const frequencyBin = audioData.frequencies[frequencyBinIndex] / 255.0; // Normalize to 0-1
 
-      // Enhanced frequency mapping with multiple approaches
+      // Enhanced frequency mapping with multiple approaches - INCREASED SPECTRAL REACTIVITY
       if (freqPosition < 0.25) {
-        // Deep bass particles - use both band data and specific frequency
-        audioResponse = (dynamicBands.bass * config.bassInfluence * 0.7) + (frequencyBin * 0.3);
+        // Deep bass particles - BOOSTED reactivity (+20%)
+        audioResponse = (dynamicBands.bass * config.bassInfluence * 0.85) + (frequencyBin * 0.35); // Increased from 0.7/0.3 to 0.85/0.35
       } else if (freqPosition < 0.45) {
-        // Mid-bass particles - blend bass and frequency data
-        const bassContribution = dynamicBands.bass * config.bassInfluence * 0.4;
-        const freqContribution = frequencyBin * 0.6;
+        // Mid-bass particles - BOOSTED reactivity (+15%)
+        const bassContribution = dynamicBands.bass * config.bassInfluence * 0.45; // Increased from 0.4 to 0.45
+        const freqContribution = frequencyBin * 0.7; // Increased from 0.6 to 0.7
         audioResponse = bassContribution + freqContribution;
       } else if (freqPosition < 0.7) {
-        // Mid-range particles - use mid bands and frequency data
-        const midContribution = dynamicBands.mid * config.midInfluence * 0.5;
-        const freqContribution = frequencyBin * 0.5;
+        // Mid-range particles - BOOSTED reactivity (+20%)
+        const midContribution = dynamicBands.mid * config.midInfluence * 0.6; // Increased from 0.5 to 0.6
+        const freqContribution = frequencyBin * 0.6; // Increased from 0.5 to 0.6
         audioResponse = midContribution + freqContribution;
       } else if (freqPosition < 0.85) {
-        // High-mid particles - blend mid and treble
-        const midContribution = dynamicBands.mid * config.midInfluence * 0.3;
-        const trebleContribution = dynamicBands.treble * config.trebleInfluence * 0.4;
-        const freqContribution = frequencyBin * 0.3;
+        // High-mid particles - BOOSTED reactivity (+15%)
+        const midContribution = dynamicBands.mid * config.midInfluence * 0.35; // Increased from 0.3 to 0.35
+        const trebleContribution = dynamicBands.treble * config.trebleInfluence * 0.45; // Increased from 0.4 to 0.45
+        const freqContribution = frequencyBin * 0.35; // Increased from 0.3 to 0.35
         audioResponse = midContribution + trebleContribution + freqContribution;
       } else {
-        // High treble particles - use treble and frequency data
-        const trebleContribution = dynamicBands.treble * config.trebleInfluence * 0.6;
-        const freqContribution = frequencyBin * 0.4;
+        // High treble particles - BOOSTED reactivity (+17%)
+        const trebleContribution = dynamicBands.treble * config.trebleInfluence * 0.7; // Increased from 0.6 to 0.7
+        const freqContribution = frequencyBin * 0.47; // Increased from 0.4 to 0.47
         audioResponse = trebleContribution + freqContribution;
       }
 
-      // Add spectral centroid influence for brightness-based scaling
+      // Add spectral centroid influence for brightness-based scaling - BOOSTED
       if (spectralFeatures.centroid > 0.5) {
-        // Bright sounds affect higher frequency particles more
+        // Bright sounds affect higher frequency particles more - INCREASED
         const brightnessBoost = (spectralFeatures.centroid - 0.5) * 2 * freqPosition;
-        audioResponse += brightnessBoost * 0.3;
+        audioResponse += brightnessBoost * 0.35; // Increased from 0.3 to 0.35
       }
 
       // Clamp to reasonable range
