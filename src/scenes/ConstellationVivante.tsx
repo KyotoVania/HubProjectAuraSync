@@ -358,12 +358,15 @@ const ConstellationVivanteComponent: React.FC<{ audioData: AudioData; config: Co
           time * formationSpeed
       );
 
-      // Apply harmonic resonance displacement - MUCH MORE SUBTLE
-      if (config.harmonicResonance && particle.harmonicResponse > 0.1) { // Only apply if significant response
+      // Apply harmonic resonance displacement - DISABLED SPATIAL CHAOS
+      if (config.harmonicResonance && particle.harmonicResponse > 0.2) { // Higher threshold
+        // REMOVED: Chaotic oscillations that were causing visual chaos
+        // OLD: Math.sin(time * 5) * particle.harmonicResponse * 0.1
+        // NEW: Only very subtle position variance, no time-based oscillations
         const resonanceOffset = new THREE.Vector3(
-            Math.sin(time * 5) * particle.harmonicResponse * 0.1, // Reduced from 10 to 5 frequency, 0.5 to 0.1 amplitude
-            Math.cos(time * 5) * particle.harmonicResponse * 0.1,
-            Math.sin(time * 3) * particle.harmonicResponse * 0.1  // Reduced from 7 to 3 frequency
+            (Math.random() - 0.5) * particle.harmonicResponse * 0.02, // Static micro-displacement only
+            (Math.random() - 0.5) * particle.harmonicResponse * 0.02,
+            (Math.random() - 0.5) * particle.harmonicResponse * 0.02
         );
         formationPos.add(resonanceOffset);
       }
@@ -372,10 +375,10 @@ const ConstellationVivanteComponent: React.FC<{ audioData: AudioData; config: Co
       particle.position.lerp(particle.targetPosition, 0.1);
       mesh.position.copy(particle.position);
 
-      // Enhanced particle scaling with audio response - INCREASED BASE REACTIVITY
+      // Enhanced particle scaling with audio response - REDUCED HARMONIC SCALING
       const baseScale = config.particleSize;
-      const audioScale = 1 + particle.audioResponse * 1.2; // Increased from 0.8 to 1.2
-      const harmonicScale = 1 + particle.harmonicResponse * 0.3; // Keep harmonic subtle
+      const audioScale = 1 + particle.audioResponse * 1.2;
+      const harmonicScale = 1 + particle.harmonicResponse * 0.05; // DRASTICALLY REDUCED: 0.3 -> 0.05
       const finalScale = baseScale * audioScale * harmonicScale;
       mesh.scale.setScalar(finalScale);
 
@@ -400,7 +403,7 @@ const ConstellationVivanteComponent: React.FC<{ audioData: AudioData; config: Co
 
         // Apply spectral brightness
         if (config.spectralBrightness) {
-          const brightness = 0.5 + spectralFeatures.centroid * 0.5;
+          const brightness = 0.75 + spectralFeatures.centroid * 0.1; // Final reduction: 0.75-0.85 range (-10%)
           color.multiplyScalar(brightness);
         }
 
